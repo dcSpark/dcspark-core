@@ -1,0 +1,17 @@
+[package]
+name = "dcspark-core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+deps = { version = "0.1.0", path = "../deps" }
+serde = { version = "1.0.144" }
+
+[dev-dependencies]
+smoke = { version = "0.3" }
+smoke-macros = { version = '0.1'}
+clap = { version = "3.2", features = [ "derive", "env" ] }
+quickcheck = { version = "1" }

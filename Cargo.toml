@@ -1,0 +1,12 @@
+[workspace]
+members = [
+    "core",
+    "deps",
+    "fraos",
+    "indexed-log-map",
+    "multiverse",
+]
+
+[workspace.metadata.release]
+shared-version = false
+tag = true

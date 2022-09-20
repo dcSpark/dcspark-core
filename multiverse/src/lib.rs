@@ -13,7 +13,7 @@ use self::entry::{Entry, EntryWeakRef};
 pub use self::{
     entry::EntryRef, error::MultiverseError, variant::Variant, visitor::DepthOrderedIterator,
 };
-use core::BlockNumber;
+use dcspark_core::BlockNumber;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Borrow,

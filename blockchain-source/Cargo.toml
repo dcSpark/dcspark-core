@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 deps = { version = "0.1.0", path = "../deps" }
-core = { version = "0.1.0", path = "../core" }
+dcspark-core = { version = "0.1.0", path = "../core" }
 
 anyhow = { version = "1" }
 async-trait = { version = "0.1.57" }

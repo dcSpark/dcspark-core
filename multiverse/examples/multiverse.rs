@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::env;
 
-use multiverse::{BestBlockSelectionRule, BlockNumber, Multiverse, Variant};
+use core::BlockNumber;
+use multiverse::{BestBlockSelectionRule, Multiverse, Variant};
 
 const MULTIVERSE_STRUCTURE: &str = "\
 (0-aaa0)<-(1-abc0)<-(2-bcd0)<-(3-cde0)<-(4-def0)<-(5-efg0)
@@ -83,8 +84,9 @@ fn main() {
 ///
 fn populate_multiverse(mv: &mut MyMultiverse) {
     // This function created just to same some space and 4 fun 2.
-    let mut insert = |id: &str, block_number: BlockNumber, parent_id: &str| {
-        mv.insert(MyNode::new(id, block_number, parent_id)).unwrap();
+    let mut insert = |id: &str, block_number: u64, parent_id: &str| {
+        mv.insert(MyNode::new(id, BlockNumber::new(block_number), parent_id))
+            .unwrap();
     };
 
     insert("0-aaa0", 0, "");

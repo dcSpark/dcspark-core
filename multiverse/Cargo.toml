@@ -13,6 +13,7 @@ documentation = "https://docs.rs/multiverse"
 
 [dependencies]
 deps = { version = "0.1.0", path = "../deps" }
+core = { version = "0.1.0", path = "../core" }
 
 serde = { version = "1.0.144" }
 sled = { version = "0.34"}

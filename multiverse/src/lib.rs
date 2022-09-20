@@ -13,6 +13,7 @@ use self::entry::{Entry, EntryWeakRef};
 pub use self::{
     entry::EntryRef, error::MultiverseError, variant::Variant, visitor::DepthOrderedIterator,
 };
+use core::BlockNumber;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Borrow,
@@ -23,16 +24,6 @@ use std::{
     str,
     sync::Arc,
 };
-
-/// The [`BlockNumber`] is designed to be a monotonically increasing value
-/// that can be used to index values of a blockchain (or the different states)
-/// that needs to be indexed.
-///
-/// [`BlockNumber`] is not designed to be unique. Just to give a sense of ordering
-/// and sequencing between blocks. though there maybe multiple blocks with the same
-/// [`BlockNumber`] depending of forks and branches happening.
-///
-pub type BlockNumber = u64;
 
 /// Configure the selection rule for the [`Multiverse::select_best_block`]
 /// function
@@ -198,11 +189,8 @@ where
         Ok(Self::new_with(db, "temporary", BlockNumber::MIN))
     }
 
-    fn db_remove<C>(&mut self, counter: C, key: &K) -> Result<bool, MultiverseError>
-    where
-        C: Into<u64>,
-    {
-        let key = mk_sled_key(counter.into(), key);
+    fn db_remove(&mut self, counter: BlockNumber, key: &K) -> Result<bool, MultiverseError> {
+        let key = mk_sled_key(counter, key);
         let b = self.tree.remove(key)?;
 
         Ok(b.is_some())
@@ -211,11 +199,13 @@ where
     /// insert the given entry in the database
     ///
     /// returns true if the value is an original value
-    fn db_insert<C>(&mut self, counter: C, key: &K, value: &V) -> Result<bool, MultiverseError>
-    where
-        C: Into<u64>,
-    {
-        let counter = counter.into();
+    fn db_insert(
+        &mut self,
+        counter: BlockNumber,
+        key: &K,
+        value: &V,
+    ) -> Result<bool, MultiverseError> {
+        let counter = counter;
         if self.store_from <= counter {
             let key = mk_sled_key(counter, key);
             let b = self.tree.insert(key, deps::serde_json::to_vec(value)?)?;
@@ -573,12 +563,12 @@ where
 /// and the block id will be used as differentiator in case of
 /// <block number> collisions (forks).
 ///
-fn mk_sled_key(counter: u64, key: impl AsRef<[u8]>) -> Vec<u8> {
+fn mk_sled_key(counter: BlockNumber, key: impl AsRef<[u8]>) -> Vec<u8> {
     let mut bytes = vec![];
 
     // leverage [`sled`](https://crates.io/crates/sled) lexicographic
     // ordering by using big endian
-    bytes.extend(counter.to_be_bytes());
+    bytes.extend(counter.into_inner().to_be_bytes());
 
     // add the separator to help with human readable and to detect
     // malformation of key in the db (a bit like a magic number)
@@ -684,7 +674,11 @@ mod tests {
     fn mk_sled_key_ordered() {
         use std::cmp::Ordering::{self, Equal, Greater, Less};
 
-        fn assumption(left: (u64, &[u8]), right: (u64, &[u8]), ordering: Ordering) -> bool {
+        fn assumption(
+            left: (BlockNumber, &[u8]),
+            right: (BlockNumber, &[u8]),
+            ordering: Ordering,
+        ) -> bool {
             let left = {
                 let (counter, bytes) = left;
                 mk_sled_key(counter, bytes)
@@ -698,13 +692,25 @@ mod tests {
             left.cmp(&right) == ordering
         }
 
-        assert!(assumption((0, &[0]), (0, &[0]), Equal));
-        assert!(assumption((0, &[0]), (0, &[1]), Less));
-        assert!(assumption((0, &[1]), (0, &[0]), Greater));
+        assert!(assumption(
+            (BlockNumber::new(0), &[0]),
+            (BlockNumber::new(0), &[0]),
+            Equal
+        ));
+        assert!(assumption(
+            (BlockNumber::new(0), &[0]),
+            (BlockNumber::new(0), &[1]),
+            Less
+        ));
+        assert!(assumption(
+            (BlockNumber::new(0), &[1]),
+            (BlockNumber::new(0), &[0]),
+            Greater
+        ));
 
         assert!(assumption(
-            (0x1F00, &[0x00]),
-            (0x0FFF, &[0xFF, 0xFF]),
+            (BlockNumber::new(0x1F00), &[0x00]),
+            (BlockNumber::new(0x0FFF), &[0xFF, 0xFF]),
             Greater
         ));
     }
@@ -717,15 +723,21 @@ mod tests {
     fn multiverse_basic_db_operations() {
         let mut m: Multiverse<Vec<u8>, Vec<u8>> = Multiverse::temporary().unwrap();
 
-        assert!(m.db_insert(0u64, &vec![0], &vec![0]).unwrap());
-        assert!(!m.db_insert(0u64, &vec![0], &vec![0]).unwrap());
+        assert!(m
+            .db_insert(BlockNumber::new(0u64), &vec![0], &vec![0])
+            .unwrap());
+        assert!(!m
+            .db_insert(BlockNumber::new(0u64), &vec![0], &vec![0])
+            .unwrap());
 
-        assert!(m.db_insert(1u64, &vec![1], &vec![1]).unwrap());
+        assert!(m
+            .db_insert(BlockNumber::new(1u64), &vec![1], &vec![1])
+            .unwrap());
 
-        assert!(m.db_remove(0u64, &vec![0]).unwrap());
-        assert!(m.db_remove(1u64, &vec![1]).unwrap());
+        assert!(m.db_remove(BlockNumber::new(0u64), &vec![0]).unwrap());
+        assert!(m.db_remove(BlockNumber::new(1u64), &vec![1]).unwrap());
 
-        assert!(!m.db_remove(1u64, &vec![1]).unwrap());
+        assert!(!m.db_remove(BlockNumber::new(1u64), &vec![1]).unwrap());
     }
 
     #[test]

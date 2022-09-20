@@ -1,5 +1,5 @@
 use super::Variant;
-use crate::BlockNumber;
+use core::BlockNumber;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::{Borrow, Cow},
@@ -212,7 +212,7 @@ impl Variant for V {
         &self.parent_id
     }
     fn block_number(&self) -> BlockNumber {
-        self.counter
+        BlockNumber::new(self.counter)
     }
 }
 

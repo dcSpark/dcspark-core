@@ -1,0 +1,19 @@
+[package]
+name = "fraos"
+version = "0.6.2"
+authors = ["Eugene Gostkin <eugene@gostk.in>", "Yevhenii Babichenko <eugene.babichenko@protonmail.com>"]
+edition = "2021"
+description = "Fast append-only data storage"
+readme = "README.md"
+license-file = "LICENSE"
+keywords = ["append-only", "key-value", "storage", "database"]
+categories = ["database"]
+
+[dependencies]
+memmap2 = "0.5.7"
+
+[dev-dependencies]
+tempfile = "3.3.0"
+quickcheck = { version = "1" }
+quickcheck_macros = { version = "1" }
+rand = { version = "0.8" }

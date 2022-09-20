@@ -1,0 +1,8 @@
+[package]
+name = "deps"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bigdecimal = { version = "0.3.0" }
+serde_json = { version = "1.0" }

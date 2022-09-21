@@ -789,6 +789,19 @@ mod tests {
         assert!(discarded.is_empty());
     }
 
+    #[test]
+    fn multiverse_insert_twice() {
+        let mut m: Multiverse<K, V> = Multiverse::temporary().unwrap();
+
+        for _ in 0..2 {
+            let blockchain = declare_blockchain! { "Root" };
+
+            for block in blockchain {
+                m.insert(block).unwrap();
+            }
+        }
+    }
+
     struct Simulation {
         multiverse: Multiverse<K, V>,
         selection_rule: BestBlockSelectionRule,

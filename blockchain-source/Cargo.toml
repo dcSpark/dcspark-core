@@ -11,4 +11,5 @@ dcspark-core = { version = "0.1.0", path = "../core" }
 
 anyhow = { version = "1" }
 async-trait = { version = "0.1.57" }
+serde = { version = "1.0.144" }
 thiserror = { version = "1.0" }

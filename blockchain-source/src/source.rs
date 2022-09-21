@@ -9,7 +9,7 @@ use dcspark_core::{BlockId, BlockNumber, TransactionId};
 /// - `pull` that may pause and fetch a transaction from the node.
 ///   it is possible the transactions will be fetched in batches.
 ///   if that is the case then it is also needed to implement the
-///   [`Source::clear_buffers`] function.
+///   Source::clear_buffers function.
 ///   The `From` parameters is used to let know the sourcer from
 ///   which point we are interested to pull from.
 ///

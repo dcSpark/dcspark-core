@@ -338,6 +338,7 @@ where
     pub fn insert(&mut self, variant: V) -> Result<(), MultiverseError> {
         if !self.db_insert(variant.block_number(), variant.id(), &variant)? {
             tracing::debug!(counter = %variant.block_number(), key = ?variant.id(), "half backed insert");
+            return Ok(());
         }
 
         let entry_ref = EntryRef::new(variant.id().clone());

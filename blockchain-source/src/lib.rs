@@ -1,5 +1,4 @@
-mod event;
+pub mod cardano;
 mod source;
 
-pub use event::*;
 pub use source::*;

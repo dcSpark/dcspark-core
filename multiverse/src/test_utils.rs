@@ -1,5 +1,5 @@
 use super::Variant;
-use core::BlockNumber;
+use dcspark_core::BlockNumber;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::{Borrow, Cow},

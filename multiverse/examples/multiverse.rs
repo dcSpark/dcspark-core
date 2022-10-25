@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::env;
 
-use core::BlockNumber;
+use dcspark_core::BlockNumber;
 use multiverse::{BestBlockSelectionRule, Multiverse, Variant};
 
 const MULTIVERSE_STRUCTURE: &str = "\

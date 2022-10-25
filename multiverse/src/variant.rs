@@ -1,4 +1,4 @@
-use core::BlockNumber;
+use dcspark_core::BlockNumber;
 
 /// convenient trait to enable generalization of [`Multiverse`](crate::Multiverse)
 /// state tracking.

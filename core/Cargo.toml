@@ -21,3 +21,4 @@ smoke = { version = "0.3" }
 smoke-macros = { version = '0.1'}
 clap = { version = "3.2", features = [ "derive", "env" ] }
 quickcheck = { version = "1" }
+serde_json = "1.0"

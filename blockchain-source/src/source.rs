@@ -1,3 +1,4 @@
+use crate::cardano::Point;
 use anyhow::Result;
 use async_trait::async_trait;
 use dcspark_core::{BlockId, BlockNumber, TransactionId};
@@ -60,5 +61,7 @@ pub trait PullFrom: Send {
 impl PullFrom for BlockNumber {}
 impl PullFrom for BlockId {}
 impl PullFrom for TransactionId {}
+impl PullFrom for Point {}
 
+impl<T: PullFrom> PullFrom for Vec<T> {}
 impl<T: PullFrom> PullFrom for Option<T> {}

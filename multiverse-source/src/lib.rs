@@ -46,6 +46,10 @@ impl<K, V, InnerSource> Multiverse<K, V, InnerSource> {
             confirmed: selected.map(|k| k.inner().clone()),
         }
     }
+
+    pub fn into_inner(self) -> InnerSource {
+        self.source
+    }
 }
 
 #[async_trait::async_trait]

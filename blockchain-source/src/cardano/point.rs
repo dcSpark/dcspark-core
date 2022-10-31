@@ -20,3 +20,16 @@ impl TryFrom<Point> for cardano_sdk::protocol::Point {
         }
     }
 }
+
+impl From<cardano_sdk::protocol::Point> for Point {
+    fn from(point: cardano_sdk::protocol::Point) -> Self {
+        if point == cardano_sdk::protocol::Point::ORIGIN {
+            Point::Origin
+        } else {
+            Point::BlockHeader {
+                slot_nb: SlotNumber::new(point.slot_nb()),
+                hash: BlockId::new(point.hash().to_string()),
+            }
+        }
+    }
+}

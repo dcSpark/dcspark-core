@@ -112,18 +112,33 @@ pub(crate) fn get_parent_id(header: &cardano_sdk::chain::Header) -> BlockId {
         .unwrap_or_else(|| BlockId::new_static("0x0000000000000000000000000000000000000000"))
 }
 
-impl multiverse::Variant for BlockEvent {
+impl<Tip> multiverse::Variant for CardanoNetworkEvent<BlockEvent, Tip> {
     type Key = BlockId;
 
     fn id(&self) -> &Self::Key {
-        &self.id
+        match self {
+            CardanoNetworkEvent::Tip(_) => {
+                unreachable!("the tip event shouldn't be inserted in the multiverse")
+            }
+            CardanoNetworkEvent::Block(block) => &block.id,
+        }
     }
 
     fn parent_id(&self) -> &Self::Key {
-        &self.parent_id
+        match self {
+            CardanoNetworkEvent::Tip(_) => {
+                unreachable!("the tip event shouldn't be inserted in the multiverse")
+            }
+            CardanoNetworkEvent::Block(block) => &block.parent_id,
+        }
     }
 
     fn block_number(&self) -> dcspark_core::BlockNumber {
-        self.block_number.into_inner().into()
+        match self {
+            CardanoNetworkEvent::Tip(_) => {
+                unreachable!("the tip event shouldn't be inserted in the multiverse")
+            }
+            CardanoNetworkEvent::Block(block) => block.block_number.into_inner().into(),
+        }
     }
 }

@@ -16,7 +16,10 @@ serde = { version = "1.0.144" }
 thiserror = { version = "1.0" }
 
 cardano-net = "0.2.1"
-cardano-sdk = "0.2.4"
+cardano-sdk = "0.2.5"
 tokio = { version = "1", features = [ "full" ] }
 tracing = { version = "0.1" }
 cbored = "0.3.3"
+cbored-derive = "0.3.1"
+cryptoxide = "0.4.2"
+hex = "0.4.3"

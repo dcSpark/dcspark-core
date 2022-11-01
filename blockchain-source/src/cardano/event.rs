@@ -24,6 +24,8 @@ pub struct BlockEvent {
     pub block_number: BlockNumber,
     pub raw_block: SerializedBlock,
     pub slot_number: SlotNumber,
+    pub is_boundary_block: bool,
+    pub epoch: Option<u64>,
 }
 
 impl<Block, Tip> CardanoNetworkEvent<Block, Tip> {
@@ -82,21 +84,7 @@ impl<'de> serde::Deserialize<'de> for BlockEvent {
                     .context("invalid block")
                     .map_err(serde::de::Error::custom)?;
 
-                let block = raw_block
-                    .unserialize()
-                    .context("Couldn't deserialize block")
-                    .map_err(serde::de::Error::custom)?;
-
-                let header = block.header();
-                let parent_id = get_parent_id(&header);
-
-                Ok(BlockEvent {
-                    id: BlockId::new(header.hash().to_string()),
-                    parent_id,
-                    block_number: BlockNumber::new(header.block_number()),
-                    raw_block,
-                    slot_number: SlotNumber::new(header.slot()),
-                })
+                BlockEvent::from_serialized_block(raw_block).map_err(serde::de::Error::custom)
             }
         }
 
@@ -154,6 +142,54 @@ impl<Tip> GetNextFrom for CardanoNetworkEvent<BlockEvent, Tip> {
             })
         } else {
             None
+        }
+    }
+}
+
+impl BlockEvent {
+    pub(crate) fn from_serialized_block(raw_block: SerializedBlock) -> anyhow::Result<Self> {
+        let block = raw_block
+            .unserialize()
+            .context("failed to deserialize block");
+
+        if let Ok(block) = block {
+            let id = BlockId::new(block.header().hash().to_string());
+            let block_number = BlockNumber::new(block.header().block_number());
+
+            let parent_id = get_parent_id(&block.header());
+
+            Ok(BlockEvent {
+                raw_block,
+                id,
+                parent_id,
+                block_number,
+                slot_number: SlotNumber::new(block.header().slot()),
+                is_boundary_block: false,
+                // this is not in the header, and computing it requires knowing the network
+                // details, which makes implementing `Serialize` and `Deserialize`more complicated,
+                // unless we serialize this field too.
+                // it can be computed later inside carp, since we don't need this in the bridge.
+                epoch: None,
+            })
+        } else if let Ok(block) = crate::cardano::byron::ByronBlock::decode(raw_block.as_ref()) {
+            let header = block.header();
+            let event = BlockEvent {
+                raw_block,
+                id: BlockId::new(block.hash().to_string()),
+                parent_id: BlockId::new(header.previous_hash().to_string()),
+                block_number: header.block_number(),
+                slot_number: header.slot_number(),
+                is_boundary_block: block.is_boundary(),
+                epoch: Some(header.epoch()),
+            };
+
+            Ok(event)
+        } else {
+            tracing::error!(
+                block = hex::encode(raw_block.as_ref()),
+                "failed to deserialize block"
+            );
+            block.map(|_| unreachable! {})
         }
     }
 }

@@ -53,7 +53,7 @@ impl<K, V, InnerSource> MultiverseSource<K, V, InnerSource> {
 impl<K, V, InnerSource, ScalarInnerFrom> Source for MultiverseSource<K, V, InnerSource>
 where
     InnerSource: Source<Event = V, From = Vec<ScalarInnerFrom>> + Send,
-    ScalarInnerFrom: PullFrom + PartialEq + Clone + Sync,
+    ScalarInnerFrom: PullFrom + PartialEq + Clone + Sync + std::fmt::Debug,
     V: GetNextFrom<From = ScalarInnerFrom>,
     K: AsRef<[u8]> + Eq + Hash + Debug + Clone + Display + PullFrom + Sync,
     V: Variant<Key = K> + Clone + EventObject,
@@ -61,6 +61,7 @@ where
     type Event = InnerSource::Event;
     type From = Option<ScalarInnerFrom>;
 
+    #[tracing::instrument(skip(self), fields(self.confirmed = ?self.confirmed))]
     async fn pull(&mut self, from: &Self::From) -> Result<Option<Self::Event>> {
         let confirmed_with_parent = self
             .confirmed
@@ -110,6 +111,9 @@ where
                             from == &confirmed_point,
                             "non continuous pull not supported yet"
                         );
+
+                        // TODO: re-check this
+                        checkpoints.push(from.clone());
                     }
                 } else if let Some(from) = from {
                     checkpoints.push(from.clone());
@@ -135,6 +139,8 @@ where
             None => return Ok(None),
         };
 
+        tracing::debug!(id = ?block.id(), parent = ?block.parent_id(), "inserting block received from network");
+
         self.multiverse.insert(block)?;
 
         let BestBlock {
@@ -154,7 +160,7 @@ where
             let _span =
                 tracing::span!(tracing::Level::DEBUG, "pruning discarded branches", num_discarded = %discarded.len()).entered();
             for discarded in discarded {
-                tracing::info!(block_id = %discarded, "pruning branch");
+                tracing::debug!(block_id = %discarded, "pruning branch");
 
                 self.multiverse.remove(&discarded)?;
             }

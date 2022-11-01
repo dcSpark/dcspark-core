@@ -168,7 +168,12 @@ where
 
         let new_stable_position = selected.map(|entry_ref| entry_ref.inner().clone());
 
-        if let Some(stable) = new_stable_position {
+        if let Some(stable) = new_stable_position.filter(|stable| {
+            self.confirmed
+                .as_ref()
+                .map(|confirmed| stable != confirmed)
+                .unwrap_or(true)
+        }) {
             let block = self
                 .multiverse
                 .get(&stable)

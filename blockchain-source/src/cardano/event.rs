@@ -1,4 +1,4 @@
-use crate::EventObject;
+use crate::{EventObject, GetNextFrom};
 use anyhow::Context;
 use cardano_sdk::protocol::SerializedBlock;
 use dcspark_core::{BlockId, BlockNumber, SlotNumber};
@@ -139,6 +139,21 @@ impl<Tip> multiverse::Variant for CardanoNetworkEvent<BlockEvent, Tip> {
                 unreachable!("the tip event shouldn't be inserted in the multiverse")
             }
             CardanoNetworkEvent::Block(block) => block.block_number.into_inner().into(),
+        }
+    }
+}
+
+impl<Tip> GetNextFrom for CardanoNetworkEvent<BlockEvent, Tip> {
+    type From = super::Point;
+
+    fn next_from(&self) -> Option<Self::From> {
+        if let CardanoNetworkEvent::Block(block_event) = self {
+            Some(super::Point::BlockHeader {
+                slot_nb: block_event.slot_number,
+                hash: block_event.id.clone(),
+            })
+        } else {
+            None
         }
     }
 }

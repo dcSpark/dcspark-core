@@ -1,22 +1,19 @@
-mod point;
-
-use anyhow::Result;
-use dcspark_blockchain_source::{EventObject, PullFrom, Source};
+use crate::{EventObject, GetNextFrom, PullFrom, Source};
+use anyhow::{anyhow, Result};
 use multiverse::{BestBlock, BestBlockSelectionRule, Variant};
-pub use point::Point;
 use std::{
     fmt::{Debug, Display},
     hash::Hash,
 };
 
-pub struct Multiverse<K, V, InnerSource> {
+pub struct MultiverseSource<K, V, InnerSource> {
     multiverse: multiverse::Multiverse<K, V>,
     source: InnerSource,
     confirmation_depth: usize,
     confirmed: Option<K>,
 }
 
-impl<K, V, InnerSource> Multiverse<K, V, InnerSource> {
+impl<K, V, InnerSource> MultiverseSource<K, V, InnerSource> {
     pub fn new(
         multiverse: multiverse::Multiverse<K, V>,
         confirmation_depth: usize,
@@ -53,29 +50,28 @@ impl<K, V, InnerSource> Multiverse<K, V, InnerSource> {
 }
 
 #[async_trait::async_trait]
-impl<K, V, InnerSource, P> Source for Multiverse<K, V, InnerSource>
+impl<K, V, InnerSource, ScalarInnerFrom> Source for MultiverseSource<K, V, InnerSource>
 where
-    InnerSource: Source<Event = V, From = Vec<P>> + Send,
-    P: Point<V = V> + PartialEq,
+    InnerSource: Source<Event = V, From = Vec<ScalarInnerFrom>> + Send,
+    ScalarInnerFrom: PullFrom + PartialEq + Clone + Sync,
+    V: GetNextFrom<From = ScalarInnerFrom>,
     K: AsRef<[u8]> + Eq + Hash + Debug + Clone + Display + PullFrom + Sync,
     V: Variant<Key = K> + Clone + EventObject,
 {
     type Event = InnerSource::Event;
-    type From = Option<P>;
+    type From = Option<ScalarInnerFrom>;
 
     async fn pull(&mut self, from: &Self::From) -> Result<Option<Self::Event>> {
         let confirmed_with_parent = self
             .confirmed
             .as_ref()
             .and_then(|confirmed| self.multiverse.get(confirmed))
-            .map(|confirmed| P::from_multiverse_entry(confirmed).map(|point| (confirmed, point)))
-            .transpose()?
+            .and_then(|confirmed| confirmed.next_from().map(|point| (confirmed, point)))
             .map(|(confirmed, point)| {
                 let parent = self
                     .multiverse
                     .get(confirmed.parent_id())
-                    .map(P::from_multiverse_entry)
-                    .transpose()?;
+                    .and_then(V::next_from);
 
                 Ok::<_, anyhow::Error>((parent, confirmed.clone(), point))
             })
@@ -85,37 +81,42 @@ where
         // should be fine once we are caught up. The reason is that there will be already a block
         // range request in progress, and it needs to be consumed entirely. There are ways of
         // optimizing this, but it shouldn't have a huge effect.
-        let inner_from = {
-            let mut checkpoints = Vec::new();
+        let inner_from =
+            {
+                let mut checkpoints = Vec::new();
 
-            // add all the tips to the list of known points. To allow the wrapped source to start
-            // pulling from there (since we already have those blocks, we just haven't forwarded them
-            // to upper layers yet).
-            for k in self.multiverse.tips().iter() {
-                let v = self.multiverse.get(k).unwrap();
-                checkpoints.push(P::from_multiverse_entry(v)?);
-            }
+                // add all the tips to the list of known points. To allow the wrapped source to start
+                // pulling from there (since we already have those blocks, we just haven't forwarded them
+                // to upper layers yet).
+                for k in self.multiverse.tips().iter() {
+                    let v =
+                        self.multiverse.get(k).unwrap().next_from().ok_or_else(|| {
+                            anyhow!("tip doesn't have an entry in the multiverse")
+                        })?;
 
-            if let Some((parent, confirmed, confirmed_point)) = confirmed_with_parent {
-                if from.as_ref() == parent.as_ref() {
-                    // if `from` is the parent from the confirmed block, just return the confirmed
-                    // block
-                    //
-                    // doing this for greater depths is possible, but there is no quick way of
-                    // checking if the block belongs to the same branch right now.
-                    return Ok(Some(confirmed));
-                } else if let Some(from) = from {
-                    anyhow::ensure!(
-                        from == &confirmed_point,
-                        "non continuous pull not supported yet"
-                    );
+                    checkpoints.push(v);
                 }
-            } else if let Some(from) = from {
-                checkpoints.push(from.clone());
-            }
 
-            checkpoints
-        };
+                if let Some((parent, confirmed, confirmed_point)) = confirmed_with_parent {
+                    if from.as_ref() == parent.as_ref() {
+                        // if `from` is the parent from the confirmed block, just return the confirmed
+                        // block
+                        //
+                        // doing this for greater depths is possible, but there is no quick way of
+                        // checking if the block belongs to the same branch right now.
+                        return Ok(Some(confirmed));
+                    } else if let Some(from) = from {
+                        anyhow::ensure!(
+                            from == &confirmed_point,
+                            "non continuous pull not supported yet"
+                        );
+                    }
+                } else if let Some(from) = from {
+                    checkpoints.push(from.clone());
+                }
+
+                checkpoints
+            };
 
         let block = match self.source.pull(&inner_from).await? {
             Some(block) => {
@@ -178,13 +179,12 @@ where
 
 #[cfg(test)]
 mod tests {
-    use dcspark_core::BlockNumber;
-    use std::collections::HashMap;
-
     use super::*;
+    use crate::{EventObject, GetNextFrom, PullFrom, Source};
     use anyhow::Result;
-    use dcspark_blockchain_source::{EventObject, PullFrom, Source};
+    use dcspark_core::BlockNumber;
     use serde::{Deserialize, Serialize};
+    use std::collections::HashMap;
 
     #[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
     struct K(String);
@@ -232,11 +232,11 @@ mod tests {
         }
     }
 
-    impl Point for K {
-        type V = V;
+    impl GetNextFrom for V {
+        type From = K;
 
-        fn from_multiverse_entry(v: &Self::V) -> Result<Self> {
-            Ok(v.id.clone())
+        fn next_from(&self) -> Option<Self::From> {
+            Some(self.id.clone())
         }
     }
 
@@ -284,7 +284,7 @@ mod tests {
 
         let source = linear_chain(6);
 
-        let mut multiverse: Multiverse<K, V, TestSource> = Multiverse {
+        let mut multiverse: MultiverseSource<K, V, TestSource> = MultiverseSource {
             multiverse: multiverse::Multiverse::temporary().unwrap(),
             source,
             confirmation_depth: min_depth,
@@ -314,7 +314,7 @@ mod tests {
 
         let source = linear_chain(6);
 
-        let mut multiverse: Multiverse<K, V, TestSource> = Multiverse {
+        let mut multiverse: MultiverseSource<K, V, TestSource> = MultiverseSource {
             multiverse: multiverse::Multiverse::temporary().unwrap(),
             source,
             confirmation_depth: min_depth,

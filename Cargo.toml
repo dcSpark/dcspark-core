@@ -6,7 +6,6 @@ members = [
     "fraos",
     "indexed-log-map",
     "multiverse",
-    "multiverse-source"
 ]
 
 [workspace.metadata.release]

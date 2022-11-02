@@ -1,3 +1,5 @@
+use cardano_multiplatform_lib::address::Address;
+
 #[derive(Debug, Clone)]
 pub struct InputOutputSetup {
     pub input_balance: cardano_multiplatform_lib::ledger::common::value::Value,
@@ -6,6 +8,8 @@ pub struct InputOutputSetup {
     pub explicit_inputs:
         Vec<cardano_multiplatform_lib::builders::input_builder::InputBuilderResult>,
     pub explicit_outputs: Vec<cardano_multiplatform_lib::TransactionOutput>,
+
+    pub change_address: Option<Address>,
 
     pub fee: cardano_multiplatform_lib::ledger::common::value::Coin,
 }

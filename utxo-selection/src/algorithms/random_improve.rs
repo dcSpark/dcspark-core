@@ -2,6 +2,7 @@ use crate::algorithm::InputSelectionAlgorithm;
 use crate::algorithms::utils;
 use crate::common::{InputOutputSetup, InputSelectionResult};
 use crate::estimate::FeeEstimator;
+use cardano_multiplatform_lib::builders::input_builder::InputBuilderResult;
 use cardano_multiplatform_lib::error::JsError;
 use cardano_multiplatform_lib::ledger::common::value::Value;
 use rand::Rng;
@@ -28,13 +29,20 @@ impl RandomImprove {
 }
 
 impl<Estimate: FeeEstimator> InputSelectionAlgorithm<Estimate> for RandomImprove {
+    fn add_available_input(&mut self, input: InputBuilderResult) -> Result<(), JsError> {
+        let new_available_index = self.available_inputs.len();
+        self.available_inputs.push(input);
+        self.available_indices.insert(new_available_index);
+        Ok(())
+    }
+
     fn select_inputs(
-        mut self,
+        &mut self,
         estimator: &mut Estimate,
         input_output_setup: InputOutputSetup,
     ) -> Result<InputSelectionResult, JsError> {
         if input_output_setup.output_balance.multiasset().is_some() {
-            return Err(JsError::from_str("Multiasset values not supported by LargestFirst. Please use LargestFirstMultiAsset"));
+            return Err(JsError::from_str("Multiasset values not supported by RandomImprove. Please use RandomImproveMultiAsset"));
         }
         let mut input_total = input_output_setup.input_balance;
         let mut output_total = input_output_setup.output_balance;
@@ -85,5 +93,17 @@ impl<Estimate: FeeEstimator> InputSelectionAlgorithm<Estimate> for RandomImprove
             output_balance: output_total,
             fee,
         })
+    }
+
+    fn can_balance_change(&self) -> bool {
+        false
+    }
+
+    fn balance_change(
+        &mut self,
+        _estimator: &mut Estimate,
+        _input_output_setup: InputOutputSetup,
+    ) -> Result<InputSelectionResult, JsError> {
+        Err(JsError::from_str("RandomImprove algo can't balance change"))
     }
 }

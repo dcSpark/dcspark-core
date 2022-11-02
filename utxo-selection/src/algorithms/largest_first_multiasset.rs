@@ -2,11 +2,12 @@ use crate::algorithm::InputSelectionAlgorithm;
 use crate::algorithms::utils;
 use crate::common::{InputOutputSetup, InputSelectionResult};
 use crate::estimate::FeeEstimator;
+use cardano_multiplatform_lib::builders::input_builder::InputBuilderResult;
 use cardano_multiplatform_lib::error::JsError;
 use std::collections::HashSet;
 
 pub struct LargestFirstMultiAsset {
-    available_inputs: Vec<cardano_multiplatform_lib::builders::input_builder::InputBuilderResult>,
+    available_inputs: Vec<InputBuilderResult>,
     available_indices: HashSet<usize>,
 }
 
@@ -26,8 +27,15 @@ impl LargestFirstMultiAsset {
 }
 
 impl<Estimate: FeeEstimator> InputSelectionAlgorithm<Estimate> for LargestFirstMultiAsset {
+    fn add_available_input(&mut self, input: InputBuilderResult) -> Result<(), JsError> {
+        let new_available_index = self.available_inputs.len();
+        self.available_inputs.push(input);
+        self.available_indices.insert(new_available_index);
+        Ok(())
+    }
+
     fn select_inputs(
-        mut self,
+        &mut self,
         estimator: &mut Estimate,
         input_output_setup: InputOutputSetup,
     ) -> Result<InputSelectionResult, JsError> {
@@ -91,5 +99,19 @@ impl<Estimate: FeeEstimator> InputSelectionAlgorithm<Estimate> for LargestFirstM
             output_balance: output_total,
             fee,
         })
+    }
+
+    fn can_balance_change(&self) -> bool {
+        false
+    }
+
+    fn balance_change(
+        &mut self,
+        _estimator: &mut Estimate,
+        _input_output_setup: InputOutputSetup,
+    ) -> Result<InputSelectionResult, JsError> {
+        Err(JsError::from_str(
+            "LargestFirstMultiAsset algo can't balance change",
+        ))
     }
 }

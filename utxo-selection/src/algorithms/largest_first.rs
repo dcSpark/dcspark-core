@@ -2,21 +2,21 @@ use crate::algorithm::InputSelectionAlgorithm;
 use crate::algorithms::utils;
 use crate::common::{InputOutputSetup, InputSelectionResult};
 use crate::estimate::FeeEstimator;
+use cardano_multiplatform_lib::builders::input_builder::InputBuilderResult;
 use cardano_multiplatform_lib::error::JsError;
 use std::collections::HashSet;
 
-pub struct LargestFirst<'a> {
-    available_inputs:
-        &'a [cardano_multiplatform_lib::builders::input_builder::InputBuilderResult],
+pub struct LargestFirst {
+    available_inputs: Vec<InputBuilderResult>,
     available_indices: HashSet<usize>,
 }
 
-impl<'a> LargestFirst<'a> {
+impl LargestFirst {
     #[allow(unused)]
     pub fn new(
-        available_inputs: &'a [
-            cardano_multiplatform_lib::builders::input_builder::InputBuilderResult
-        ],
+        available_inputs: Vec<
+            cardano_multiplatform_lib::builders::input_builder::InputBuilderResult,
+        >,
     ) -> Self {
         let available_indices = HashSet::from_iter(0..available_inputs.len());
         Self {
@@ -26,9 +26,16 @@ impl<'a> LargestFirst<'a> {
     }
 }
 
-impl<'a, Estimate: FeeEstimator> InputSelectionAlgorithm<Estimate> for LargestFirst<'a> {
+impl<Estimate: FeeEstimator> InputSelectionAlgorithm<Estimate> for LargestFirst {
+    fn add_available_input(&mut self, input: InputBuilderResult) -> Result<(), JsError> {
+        let new_available_index = self.available_inputs.len();
+        self.available_inputs.push(input);
+        self.available_indices.insert(new_available_index);
+        Ok(())
+    }
+
     fn select_inputs(
-        mut self,
+        &mut self,
         estimator: &mut Estimate,
         input_output_setup: InputOutputSetup,
     ) -> Result<InputSelectionResult, JsError> {
@@ -41,7 +48,7 @@ impl<'a, Estimate: FeeEstimator> InputSelectionAlgorithm<Estimate> for LargestFi
 
         let chosen_indices = utils::cip2_largest_first_by(
             estimator,
-            self.available_inputs,
+            &self.available_inputs,
             &mut self.available_indices,
             &mut input_total,
             &mut output_total,
@@ -59,5 +66,17 @@ impl<'a, Estimate: FeeEstimator> InputSelectionAlgorithm<Estimate> for LargestFi
             output_balance: output_total,
             fee,
         })
+    }
+
+    fn can_balance_change(&self) -> bool {
+        false
+    }
+
+    fn balance_change(
+        &mut self,
+        _estimator: &mut Estimate,
+        _input_output_setup: InputOutputSetup,
+    ) -> Result<InputSelectionResult, JsError> {
+        Err(JsError::from_str("LargestFirst algo can't balance change"))
     }
 }

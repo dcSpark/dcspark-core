@@ -1,7 +1,6 @@
 use crate::index_on_mmaps::{IndexDescriptor, IndexOnMmaps, SingleMmapIndex};
 use crate::{Error, SharedMmap};
 use memmap2::{MmapMut, MmapOptions};
-use std::cmp::{max, min};
 use std::convert::TryInto;
 use std::fs::File;
 use std::io::Write;
@@ -268,7 +267,7 @@ impl GrowableMmap {
             None => add,
             Some(_) => {
                 let active_mmap = active_mmap_size.unwrap_or(2048);
-                max(add, min(active_mmap * 2, 4096 * 4096))
+                (active_mmap * 2).clamp(4096 * 4096, add)
             }
         }
     }

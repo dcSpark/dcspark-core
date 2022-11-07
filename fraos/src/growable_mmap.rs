@@ -268,6 +268,7 @@ impl GrowableMmap {
             None => add,
             Some(_) => {
                 let active_mmap = active_mmap_size.unwrap_or(2048);
+                #[allow(clippy::manual_clamp)]
                 max(add, min(active_mmap * 2, 4096 * 4096))
             }
         }

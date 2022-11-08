@@ -1,22 +1,25 @@
 use crate::common::{InputOutputSetup, InputSelectionResult};
-use crate::estimate::FeeEstimator;
-use cardano_multiplatform_lib::address::Address;
-use cardano_multiplatform_lib::builders::input_builder::InputBuilderResult;
+use crate::estimate::TransactionFeeEstimator;
+use crate::UTxOBuilder;
 use cardano_multiplatform_lib::error::JsError;
+use dcspark_core::tx::UTxODetails;
 
-pub trait InputSelectionAlgorithm<Estimate: FeeEstimator> {
-    fn add_available_input(&mut self, input: InputBuilderResult) -> Result<(), JsError>;
+pub trait InputSelectionAlgorithm {
+    type InputUtxo: Clone;
+    type OutputUtxo: Clone;
 
-    fn select_inputs(
+    fn set_available_inputs(
+        &mut self,
+        available_inputs: Vec<Self::InputUtxo>,
+    ) -> anyhow::Result<()>;
+
+    fn select_inputs<
+        Estimate: TransactionFeeEstimator<InputUtxo = Self::InputUtxo, OutputUtxo = Self::OutputUtxo>,
+    >(
         &mut self,
         estimator: &mut Estimate,
-        input_output_setup: InputOutputSetup,
-    ) -> Result<InputSelectionResult, JsError>;
+        input_output_setup: InputOutputSetup<Self::InputUtxo, Self::OutputUtxo>,
+    ) -> anyhow::Result<InputSelectionResult<Self::InputUtxo, Self::OutputUtxo>>;
 
-    fn can_balance_change(&self) -> bool;
-    fn balance_change(
-        &mut self,
-        estimator: &mut Estimate,
-        input_output_setup: InputOutputSetup,
-    ) -> Result<InputSelectionResult, JsError>;
+    fn available_inputs(&self) -> Vec<Self::InputUtxo>;
 }

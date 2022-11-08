@@ -1,52 +1,110 @@
-use crate::{FeeEstimator, InputOutputSetup, InputSelectionAlgorithm, InputSelectionResult};
-use cardano_multiplatform_lib::address::Address;
-use cardano_multiplatform_lib::builders::input_builder::InputBuilderResult;
-use cardano_multiplatform_lib::builders::tx_builder::{
-    TransactionBuilder, TransactionBuilderConfig,
-};
+use std::collections::{HashMap};
+use crate::{common, InputOutputSetup, InputSelectionAlgorithm, TransactionFeeEstimator, UTxOBuilder};
 use cardano_multiplatform_lib::error::JsError;
-use cardano_multiplatform_lib::ledger::common::value::Coin;
-use cardano_multiplatform_lib::{Transaction, TransactionOutput};
+use dcspark_core::tx::{TransactionAsset, UTxODetails};
+use dcspark_core::{Address, Regulated, TokenId, Value};
 
-pub struct TestSetup {
-    available_utxos: Vec<InputBuilderResult>,
-    transactions: Vec<Transaction>,
-    change_address: Address,
+#[allow(unused)]
+pub enum PaymentEvent<InputUtxo: Clone, OutputUtxo: Clone> {
+    Receiving {
+        utxos: Vec<InputUtxo>,
+    },
+    Paying {
+        utxos: Vec<OutputUtxo>,
+    }
 }
 
-pub struct TestSetupResult {
-    available_utxos: Vec<TransactionOutput>,
-}
-
-pub trait FeeEstimatorForTest: FeeEstimator + Sized {
-    fn from_tx(tx: &Transaction) -> Result<Self, JsError>;
-}
-
-pub fn tx_to_setup(_tx: Transaction) -> Result<InputOutputSetup, JsError> {
-    todo!()
-}
-
+#[allow(unused)]
 pub fn run_algorithm_benchmark<
-    E: FeeEstimatorForTest,
-    InputSelectionAlgo: InputSelectionAlgorithm<E>,
-    BalanceExcessAlgo: InputSelectionAlgorithm<E>,
+    InputUtxo: Clone,
+    OutputUtxo: Into<common::UTxOBuilder> + Clone,
+    Estimator: TransactionFeeEstimator<InputUtxo = InputUtxo, OutputUtxo = OutputUtxo>,
+    Algo: InputSelectionAlgorithm<InputUtxo = InputUtxo, OutputUtxo = OutputUtxo>,
+    ChangeBalanceAlgo: InputSelectionAlgorithm<InputUtxo = InputUtxo, OutputUtxo = OutputUtxo>,
+    EstimatorCreator,
+    OutputToInput,
 >(
-    create_estimator: fn (Transaction) -> E,
-    mut input_selection: InputSelectionAlgo,
-    excess_balance_algo: BalanceExcessAlgo,
-    setup: TestSetup,
-) -> Result<(), JsError> {
-    for utxo in setup.available_utxos.into_iter() {
-        input_selection.add_available_input(utxo)?;
+    mut algorithm: Algo,
+    mut balance_change_algo: ChangeBalanceAlgo,
+    create_estimator: EstimatorCreator,
+    initial_utxos: Vec<InputUtxo>,
+    events: Vec<PaymentEvent<InputUtxo, OutputUtxo>>,
+    change_address: Address,
+    output_to_input: OutputToInput,
+) -> anyhow::Result<Vec<InputUtxo>>
+    where
+        EstimatorCreator: Fn(Vec<OutputUtxo>) -> anyhow::Result<Estimator>,
+        OutputToInput: Fn(OutputUtxo) -> anyhow::Result<InputUtxo>,
+{
+    let mut current_utxos = initial_utxos;
+    for event in events.into_iter() {
+        let (output_balance, output_asset_balance, mut estimate, fixed_outputs) = match event {
+            PaymentEvent::Receiving { utxos } => {
+                utxos.into_iter().for_each(|utxo| current_utxos.push(utxo));
+                continue;
+            }
+            PaymentEvent::Paying { utxos } => {
+                let mut input_balance = Value::<Regulated>::zero();
+                let mut asset_balance = HashMap::<TokenId, TransactionAsset>::new();
+                for utxo in utxos.iter() {
+                    let details: UTxOBuilder = utxo.clone().into();
+                    input_balance += details.value;
+                    for asset in details.assets.iter() {
+                        let balance = asset_balance.entry(asset.fingerprint.clone()).or_insert(TransactionAsset {
+                            policy_id: asset.policy_id.clone(),
+                            asset_name: asset.asset_name.clone(),
+                            fingerprint: asset.fingerprint.clone(),
+                            quantity: Value::zero(),
+                        });
+                        balance.quantity += asset.quantity.clone();
+                    }
+                }
+                (input_balance, asset_balance, create_estimator(utxos.clone())?, utxos)
+            }
+        };
+        algorithm.set_available_inputs(current_utxos.clone())?;
+        let mut select_result = algorithm.select_inputs(&mut estimate, InputOutputSetup {
+            input_balance: Default::default(),
+            input_asset_balance: Default::default(),
+            output_balance,
+            output_asset_balance,
+            fixed_inputs: vec![],
+            fixed_outputs,
+            change_address: Some(change_address.clone())
+        })?;
+
+        current_utxos = algorithm.available_inputs();
+        let mut changes = select_result.changes.clone();
+
+        if !select_result.is_balanced() {
+            balance_change_algo.set_available_inputs(current_utxos.clone())?;
+
+            let mut fixed_inputs = select_result.fixed_inputs;
+            fixed_inputs.append(&mut select_result.chosen_inputs);
+
+            let mut fixed_outputs = select_result.fixed_outputs;
+            fixed_outputs.append(&mut changes.clone());
+
+            let mut balance_change_result = balance_change_algo.select_inputs(&mut estimate, InputOutputSetup {
+                input_balance: select_result.input_balance,
+                input_asset_balance: select_result.input_asset_balance,
+                output_balance: select_result.output_balance,
+                output_asset_balance: select_result.output_asset_balance,
+                fixed_inputs,
+                fixed_outputs,
+                change_address: Some(change_address.clone())
+            })?;
+
+            assert!(balance_change_result.is_balanced());
+
+            current_utxos = balance_change_algo.available_inputs();
+            changes.append(&mut balance_change_result.changes)
+        }
+
+        for change in changes {
+            current_utxos.push(output_to_input(change)?);
+        }
     }
 
-    for tx in setup.transactions.into_iter() {
-        let mut estimator = create_estimator(tx.clone());
-        let selected_inputs = input_selection.select_inputs(&mut estimator, tx_to_setup(tx)?)?;
-
-        todo!();
-    }
-
-    Ok(())
+    Ok(current_utxos)
 }
-

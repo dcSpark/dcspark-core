@@ -1,12 +1,20 @@
-use crate::estimate::FeeEstimator;
+use crate::estimate::TransactionFeeEstimator;
+use crate::{InputSelectionResult, UTxOBuilder};
 use cardano_multiplatform_lib::builders::input_builder::InputBuilderResult;
 use cardano_multiplatform_lib::error::JsError;
 use cardano_multiplatform_lib::ledger::common::value::{from_bignum, BigNum, Coin, Value};
 use cardano_multiplatform_lib::TransactionOutput;
+use dcspark_core::tx::UTxODetails;
+use dcspark_core::{Balance, Regulated, TokenId};
 use rand::Rng;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use anyhow::anyhow;
 
-pub fn cip2_largest_first_by<Estimator: FeeEstimator, F>(
+pub fn cip2_largest_first_by<
+    OutputUtxo,
+    Estimator: TransactionFeeEstimator<InputUtxo = InputBuilderResult, OutputUtxo = OutputUtxo>,
+    F,
+>(
     estimator: &mut Estimator,
     available_inputs: &[InputBuilderResult],
     available_indices: &mut HashSet<usize>,
@@ -14,7 +22,7 @@ pub fn cip2_largest_first_by<Estimator: FeeEstimator, F>(
     output_total: &mut Value,
     fee: &mut Coin,
     by: F,
-) -> Result<HashSet<usize>, JsError>
+) -> anyhow::Result<HashSet<usize>>
 where
     F: Fn(&Value) -> Option<BigNum>,
 {
@@ -35,12 +43,13 @@ where
         }
         let input = &available_inputs[i];
         // differing from CIP2, we include the needed fees in the targets instead of just output values
-        let input_fee = estimator.fee_for_input(input)?;
-        estimator.add_input(input)?;
+        let input_fee =
+            cardano_utils::conversion::value_to_csl_coin(&estimator.fee_for_input(input)?)?;
+        estimator.add_input(input.clone())?;
 
-        *input_total = input_total.checked_add(&input.utxo_info.amount())?;
-        *output_total = output_total.checked_add(&Value::new(&input_fee))?;
-        *fee = fee.checked_add(&input_fee)?;
+        *input_total = input_total.checked_add(&input.utxo_info.amount()).map_err(|err| anyhow!(err))?;
+        *output_total = output_total.checked_add(&Value::new(&input_fee)).map_err(|err| anyhow!(err))?;
+        *fee = fee.checked_add(&input_fee).map_err(|err| anyhow!(err))?;
 
         available_indices.remove(&i);
         chosen_indices.insert(i);
@@ -49,14 +58,19 @@ where
     if by(input_total).unwrap_or_else(BigNum::zero)
         < by(output_total).expect("do not call on asset types that aren't in the output")
     {
-        return Err(JsError::from_str("UTxO Balance Insufficient"));
+        return Err(anyhow!("UTxO Balance Insufficient"));
     }
 
     Ok(chosen_indices)
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn cip2_random_improve_by<Estimator: FeeEstimator, F, R: Rng + ?Sized>(
+pub fn cip2_random_improve_by<
+    OutputUtxo,
+    Estimator: TransactionFeeEstimator<InputUtxo = InputBuilderResult, OutputUtxo = OutputUtxo>,
+    F,
+    R: Rng + ?Sized,
+>(
     estimator: &mut Estimator,
     available_inputs: &[InputBuilderResult],
     available_indices: &mut BTreeSet<usize>,
@@ -66,9 +80,9 @@ pub fn cip2_random_improve_by<Estimator: FeeEstimator, F, R: Rng + ?Sized>(
     fee: &mut Coin,
     by: F,
     rng: &mut R,
-) -> Result<HashSet<usize>, JsError>
-where
-    F: Fn(&Value) -> Option<BigNum>,
+) -> anyhow::Result<HashSet<usize>>
+    where
+        F: Fn(&Value) -> Option<BigNum>,
 {
     let mut chosen_indices = HashSet::<usize>::new();
 
@@ -103,10 +117,10 @@ where
         // the sum of all outputs as one single value.
         let mut added = BigNum::zero();
         let needed = by(&output.amount())
-            .ok_or_else(|| JsError::from_str("Transaction output proper amount is not found"))?;
+            .ok_or_else(|| anyhow!("Transaction output proper amount is not found"))?;
         while added < needed {
             if relevant_indices.is_empty() {
-                return Err(JsError::from_str("UTxO Balance Insufficient"));
+                return Err(anyhow!("UTxO Balance Insufficient"));
             }
             let random_index = rng.gen_range(0..relevant_indices.len());
             let i = relevant_indices.swap_remove(random_index);
@@ -115,7 +129,7 @@ where
             added = added.checked_add(
                 &by(&input.utxo_info.amount())
                     .expect("do not call on asset types that aren't in the output"),
-            )?;
+            ).map_err(|err| anyhow!(err))?;
             associated_indices
                 .entry(output.clone())
                 .or_default()
@@ -127,12 +141,12 @@ where
         for output in outputs.iter_mut() {
             let associated = associated_indices
                 .get_mut(output)
-                .ok_or_else(|| JsError::from_str("Associated index by output key not found"))?;
+                .ok_or_else(|| anyhow!("Associated index by output key not found"))?;
             for i in associated.iter_mut() {
                 let random_index = rng.gen_range(0..relevant_indices.len());
                 let j: &mut usize = relevant_indices
                     .get_mut(random_index)
-                    .ok_or_else(|| JsError::from_str("Relevant index by random index not found"))?;
+                    .ok_or_else(|| anyhow!("Relevant index by random index not found"))?;
                 let should_improve = {
                     let input = &available_inputs[*i];
                     let new_input = &available_inputs[*j];
@@ -160,18 +174,70 @@ where
     for output in outputs.iter() {
         for i in associated_indices
             .get(output)
-            .ok_or_else(|| JsError::from_str("Transaction output key not found"))?
+            .ok_or_else(|| anyhow!("Transaction output key not found"))?
             .iter()
         {
             let input = &available_inputs[*i];
-            let input_fee = estimator.fee_for_input(input)?;
-            estimator.add_input(input)?;
-            *input_total = input_total.checked_add(&input.utxo_info.amount())?;
-            *output_total = output_total.checked_add(&Value::new(&input_fee))?;
-            *fee = fee.checked_add(&input_fee)?;
+            let input_fee =
+                cardano_utils::conversion::value_to_csl_coin(&estimator.fee_for_input(input)?)?;
+            estimator.add_input(input.clone())?;
+            *input_total = input_total.checked_add(&input.utxo_info.amount()).map_err(|err| anyhow!(err))?;
+            *output_total = output_total.checked_add(&Value::new(&input_fee)).map_err(|err| anyhow!(err))?;
+            *fee = fee.checked_add(&input_fee).map_err(|err| anyhow!(err))?;
             chosen_indices.insert(*i);
         }
     }
 
     Ok(chosen_indices)
+}
+
+pub fn result_from_cml<
+    InputUtxo: Clone,
+    OutputUtxo: Clone,
+>(
+    fixed_inputs: Vec<InputUtxo>,
+    fixed_outputs: Vec<OutputUtxo>,
+    chosen_inputs: Vec<InputUtxo>,
+    chosen_outputs: Vec<OutputUtxo>,
+    input_total: Value,
+    output_total: Value,
+    fee: Coin,
+) -> anyhow::Result<InputSelectionResult<InputUtxo, OutputUtxo>> {
+    let (input_balance, input_asset_balance) =
+        cardano_utils::conversion::csl_value_to_tokens(&input_total)?;
+    let (output_balance, output_asset_balance) =
+        cardano_utils::conversion::csl_value_to_tokens(&output_total)?;
+    let fee = cardano_utils::conversion::csl_coin_to_value(&fee)?;
+
+    let mut balance = Balance::zero();
+    balance += input_balance.clone() - output_balance.clone();
+    let mut asset_balance = HashMap::<TokenId, Balance<Regulated>>::new();
+    for (id, asset) in input_asset_balance.iter() {
+        let entry = asset_balance
+            .entry(id.clone())
+            .or_insert_with(Balance::zero);
+        *entry += asset.quantity.clone();
+    }
+    for (id, asset) in output_asset_balance.iter() {
+        let entry = asset_balance
+            .entry(id.clone())
+            .or_insert_with(Balance::zero);
+        *entry -= asset.quantity.clone();
+    }
+
+    Ok(InputSelectionResult {
+        fixed_inputs,
+        fixed_outputs,
+        chosen_inputs,
+        changes: chosen_outputs,
+        input_balance,
+        output_balance,
+        fee,
+
+        input_asset_balance,
+        output_asset_balance,
+
+        balance,
+        asset_balance,
+    })
 }

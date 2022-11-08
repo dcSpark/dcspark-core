@@ -1,27 +1,18 @@
 [package]
-name = "dcspark-core"
+name = "cardano-utils"
 version = "0.1.0"
 edition = "2021"
-license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 deps = { version = "0.1.0", path = "../deps" }
+dcspark-core = { version = "0.1.0", path = "../core" }
 
-anyhow = { version = "1.0" }
+anyhow = { version = "1" }
 bech32 = { version = "0.9" }
-cryptoxide = {version = "0.4.2" }
 cardano-multiplatform-lib = { git = "https://github.com/dcSpark/cardano-multiplatform-lib.git", branch = "egostkin/utxo-selection-changes", commit = "a41264b88c9b48ac890c2d046fe916f224fccabb" }
+cryptoxide = "0.4.2"
 hex = { version = "0.4" }
-imbl = { version = "2.0" }
-serde = { version = "1.0.144", features = ["derive", "rc" ] }
-thiserror = { version = "1.0" }
 rand = "0.8.5"
-
-[dev-dependencies]
-smoke = { version = "0.3" }
-smoke-macros = { version = '0.1'}
-clap = { version = "3.2", features = [ "derive", "env" ] }
-quickcheck = { version = "1" }
-serde_json = "1.0"
+serde = { version = "1.0.144", features = ["derive", "rc" ] }

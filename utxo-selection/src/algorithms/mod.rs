@@ -3,6 +3,7 @@ mod largest_first_multiasset;
 mod random_improve;
 mod random_improve_multiasset;
 mod utils;
+mod thermostat;
 
 pub use largest_first::*;
 pub use largest_first_multiasset::*;

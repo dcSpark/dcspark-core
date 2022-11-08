@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "blockchain-source",
+    "cardano-utils",
     "core",
     "deps",
     "fraos",

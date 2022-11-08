@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use dcspark_core::{BlockId, SlotNumber};
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash)]
 pub enum Point {
     Origin,
     BlockHeader { slot_nb: SlotNumber, hash: BlockId },

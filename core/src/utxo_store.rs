@@ -9,7 +9,7 @@ use std::sync::Arc;
 /// store for Unspent Transaction Output
 ///
 /// efficient storage of UTxO for the multiverse data model
-/// using a [`Hamt`] to efficiently share the memory between
+/// using a Hamt to efficiently share the memory between
 /// the different states of the UTxO within the Multiverse
 #[derive(Default, Clone)]
 pub struct UTxOStore {
@@ -190,7 +190,7 @@ impl UTxOStore {
         }
     }
 
-    /// get the [`UTxODetails`] associated to the [`TransactionPointer`]
+    /// get the [`UTxODetails`] associated to the [`UtxoPointer`]
     ///
     /// Returns [`None`] if the utxo is not present in the state
     #[inline]

@@ -1,10 +1,5 @@
-use std::marker::PhantomData;
-use crate::UTxOBuilder;
-use cardano_multiplatform_lib::builders::input_builder::InputBuilderResult;
-use cardano_multiplatform_lib::error::JsError;
-use cardano_multiplatform_lib::TransactionOutput;
-use dcspark_core::tx::UTxODetails;
 use dcspark_core::{Regulated, Value};
+use std::marker::PhantomData;
 
 ///
 /// This trait is designed to hide the fee calculation under abstraction.
@@ -25,12 +20,15 @@ pub trait TransactionFeeEstimator {
 }
 
 pub(crate) struct DummyCmlFeeEstimate<Input, Output> {
-    phantom_data: PhantomData<(Input, Output)>
+    phantom_data: PhantomData<(Input, Output)>,
 }
 
 impl<Input, Output> DummyCmlFeeEstimate<Input, Output> {
+    #[allow(unused)]
     pub fn new() -> Self {
-        DummyCmlFeeEstimate { phantom_data: Default::default() }
+        DummyCmlFeeEstimate {
+            phantom_data: Default::default(),
+        }
     }
 }
 

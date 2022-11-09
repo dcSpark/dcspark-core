@@ -4,15 +4,13 @@ use crate::algorithms::utils::result_from_cml;
 use crate::common::{InputOutputSetup, InputSelectionResult};
 use crate::csl::CslTransactionOutput;
 use crate::estimate::TransactionFeeEstimator;
-use crate::UTxOBuilder;
+use anyhow::anyhow;
 use cardano_multiplatform_lib::builders::input_builder::InputBuilderResult;
-use cardano_multiplatform_lib::error::JsError;
 use cardano_multiplatform_lib::ledger::common::value::Value;
 use cardano_multiplatform_lib::TransactionOutput;
 use cardano_utils::conversion::multiasset_iter;
 use rand::Rng;
 use std::collections::{BTreeSet, HashSet};
-use anyhow::anyhow;
 
 pub struct RandomImproveMultiAsset {
     available_inputs: Vec<InputBuilderResult>,
@@ -30,9 +28,7 @@ impl RandomImproveMultiAsset {
     }
 }
 
-impl InputSelectionAlgorithm
-    for RandomImproveMultiAsset
-{
+impl InputSelectionAlgorithm for RandomImproveMultiAsset {
     type InputUtxo = InputBuilderResult;
     type OutputUtxo = TransactionOutput;
 
@@ -71,7 +67,6 @@ impl InputSelectionAlgorithm
                 let output: CslTransactionOutput = output.into();
                 output.inner
             })
-
             .collect();
 
         let mut chosen_indices = HashSet::<usize>::new();
@@ -126,8 +121,12 @@ impl InputSelectionAlgorithm
             let input_fee =
                 cardano_utils::conversion::value_to_csl_coin(&estimator.fee_for_input(input)?)?;
             estimator.add_input(input.clone()).unwrap();
-            input_total = input_total.checked_add(&input.utxo_info.amount()).map_err(|err| anyhow!(err))?;
-            output_total = output_total.checked_add(&Value::new(&input_fee)).map_err(|err| anyhow!(err))?;
+            input_total = input_total
+                .checked_add(&input.utxo_info.amount())
+                .map_err(|err| anyhow!(err))?;
+            output_total = output_total
+                .checked_add(&Value::new(&input_fee))
+                .map_err(|err| anyhow!(err))?;
             fee = fee.checked_add(&input_fee).map_err(|err| anyhow!(err))?;
             chosen_indices.insert(i);
         }
@@ -149,6 +148,9 @@ impl InputSelectionAlgorithm
     }
 
     fn available_inputs(&self) -> Vec<Self::InputUtxo> {
-        self.available_indices.iter().map(|index| self.available_inputs[*index].clone()).collect()
+        self.available_indices
+            .iter()
+            .map(|index| self.available_inputs[*index].clone())
+            .collect()
     }
 }

@@ -3,15 +3,13 @@ use crate::algorithms::utils;
 use crate::common::{InputOutputSetup, InputSelectionResult};
 use crate::csl::CslTransactionOutput;
 use crate::estimate::TransactionFeeEstimator;
-use crate::UTxOBuilder;
+use anyhow::anyhow;
 use cardano_multiplatform_lib::builders::input_builder::InputBuilderResult;
-use cardano_multiplatform_lib::error::JsError;
 use cardano_multiplatform_lib::ledger::common::value::Value;
 use cardano_multiplatform_lib::TransactionOutput;
 use dcspark_core::Balance;
 use rand::Rng;
 use std::collections::BTreeSet;
-use anyhow::anyhow;
 
 pub struct RandomImprove {
     available_inputs: Vec<InputBuilderResult>,
@@ -29,8 +27,7 @@ impl RandomImprove {
     }
 }
 
-impl InputSelectionAlgorithm for RandomImprove
-{
+impl InputSelectionAlgorithm for RandomImprove {
     type InputUtxo = InputBuilderResult;
     type OutputUtxo = TransactionOutput;
 
@@ -103,8 +100,12 @@ impl InputSelectionAlgorithm for RandomImprove
             let input_fee =
                 cardano_utils::conversion::value_to_csl_coin(&estimator.fee_for_input(input)?)?;
             estimator.add_input(input.clone())?;
-            input_total = input_total.checked_add(&input.utxo_info.amount()).map_err(|err| anyhow!(err))?;
-            output_total = output_total.checked_add(&Value::new(&input_fee)).map_err(|err| anyhow!(err))?;
+            input_total = input_total
+                .checked_add(&input.utxo_info.amount())
+                .map_err(|err| anyhow!(err))?;
+            output_total = output_total
+                .checked_add(&Value::new(&input_fee))
+                .map_err(|err| anyhow!(err))?;
             fee = fee.checked_add(&input_fee).map_err(|err| anyhow!(err))?;
             chosen_indices.insert(i);
         }
@@ -137,6 +138,9 @@ impl InputSelectionAlgorithm for RandomImprove
     }
 
     fn available_inputs(&self) -> Vec<Self::InputUtxo> {
-        self.available_indices.iter().map(|index| self.available_inputs[*index].clone()).collect()
+        self.available_indices
+            .iter()
+            .map(|index| self.available_inputs[*index].clone())
+            .collect()
     }
 }

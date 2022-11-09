@@ -1,14 +1,12 @@
 use crate::estimate::TransactionFeeEstimator;
-use crate::{InputSelectionResult, UTxOBuilder};
+use crate::InputSelectionResult;
+use anyhow::anyhow;
 use cardano_multiplatform_lib::builders::input_builder::InputBuilderResult;
-use cardano_multiplatform_lib::error::JsError;
 use cardano_multiplatform_lib::ledger::common::value::{from_bignum, BigNum, Coin, Value};
 use cardano_multiplatform_lib::TransactionOutput;
-use dcspark_core::tx::UTxODetails;
 use dcspark_core::{Balance, Regulated, TokenId};
 use rand::Rng;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use anyhow::anyhow;
 
 pub fn cip2_largest_first_by<
     OutputUtxo,
@@ -47,8 +45,12 @@ where
             cardano_utils::conversion::value_to_csl_coin(&estimator.fee_for_input(input)?)?;
         estimator.add_input(input.clone())?;
 
-        *input_total = input_total.checked_add(&input.utxo_info.amount()).map_err(|err| anyhow!(err))?;
-        *output_total = output_total.checked_add(&Value::new(&input_fee)).map_err(|err| anyhow!(err))?;
+        *input_total = input_total
+            .checked_add(&input.utxo_info.amount())
+            .map_err(|err| anyhow!(err))?;
+        *output_total = output_total
+            .checked_add(&Value::new(&input_fee))
+            .map_err(|err| anyhow!(err))?;
         *fee = fee.checked_add(&input_fee).map_err(|err| anyhow!(err))?;
 
         available_indices.remove(&i);
@@ -81,8 +83,8 @@ pub fn cip2_random_improve_by<
     by: F,
     rng: &mut R,
 ) -> anyhow::Result<HashSet<usize>>
-    where
-        F: Fn(&Value) -> Option<BigNum>,
+where
+    F: Fn(&Value) -> Option<BigNum>,
 {
     let mut chosen_indices = HashSet::<usize>::new();
 
@@ -126,10 +128,12 @@ pub fn cip2_random_improve_by<
             let i = relevant_indices.swap_remove(random_index);
             available_indices.remove(&i);
             let input = &available_inputs[i];
-            added = added.checked_add(
-                &by(&input.utxo_info.amount())
-                    .expect("do not call on asset types that aren't in the output"),
-            ).map_err(|err| anyhow!(err))?;
+            added = added
+                .checked_add(
+                    &by(&input.utxo_info.amount())
+                        .expect("do not call on asset types that aren't in the output"),
+                )
+                .map_err(|err| anyhow!(err))?;
             associated_indices
                 .entry(output.clone())
                 .or_default()
@@ -181,8 +185,12 @@ pub fn cip2_random_improve_by<
             let input_fee =
                 cardano_utils::conversion::value_to_csl_coin(&estimator.fee_for_input(input)?)?;
             estimator.add_input(input.clone())?;
-            *input_total = input_total.checked_add(&input.utxo_info.amount()).map_err(|err| anyhow!(err))?;
-            *output_total = output_total.checked_add(&Value::new(&input_fee)).map_err(|err| anyhow!(err))?;
+            *input_total = input_total
+                .checked_add(&input.utxo_info.amount())
+                .map_err(|err| anyhow!(err))?;
+            *output_total = output_total
+                .checked_add(&Value::new(&input_fee))
+                .map_err(|err| anyhow!(err))?;
             *fee = fee.checked_add(&input_fee).map_err(|err| anyhow!(err))?;
             chosen_indices.insert(*i);
         }
@@ -191,10 +199,7 @@ pub fn cip2_random_improve_by<
     Ok(chosen_indices)
 }
 
-pub fn result_from_cml<
-    InputUtxo: Clone,
-    OutputUtxo: Clone,
->(
+pub fn result_from_cml<InputUtxo: Clone, OutputUtxo: Clone>(
     fixed_inputs: Vec<InputUtxo>,
     fixed_outputs: Vec<OutputUtxo>,
     chosen_inputs: Vec<InputUtxo>,

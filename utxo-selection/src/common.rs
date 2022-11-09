@@ -1,5 +1,4 @@
-use cardano_multiplatform_lib::error::JsError;
-use dcspark_core::tx::{TransactionAsset, UTxODetails};
+use dcspark_core::tx::TransactionAsset;
 use dcspark_core::{Address, Balance, Regulated, TokenId, Value};
 use std::collections::HashMap;
 

@@ -1,15 +1,14 @@
-use std::borrow::BorrowMut;
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
-use std::fmt::{Debug, format};
+use crate::{
+    InputOutputSetup, InputSelectionAlgorithm, InputSelectionResult, TransactionFeeEstimator,
+    UTxOBuilder,
+};
 use anyhow::{anyhow, Context};
-use cardano_multiplatform_lib::builders::input_builder::InputBuilderResult;
-use cardano_multiplatform_lib::error::JsError;
 use cardano_utils::multisig_plan::MultisigPlan;
 use cardano_utils::network_id::NetworkInfo;
+use dcspark_core::tx::{TransactionAsset, UTxODetails};
 use dcspark_core::{Address, Balance, Regulated, TokenId, UTxOStore, Value};
-use dcspark_core::tx::{TransactionAsset, UTxODetails, UtxoPointer};
-use crate::{InputOutputSetup, InputSelectionAlgorithm, InputSelectionResult, TransactionFeeEstimator, UTxOBuilder};
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 
 pub struct ThermostatAlgoConfig {
     num_accumulators: usize,
@@ -20,8 +19,6 @@ pub struct ThermostatAlgoConfig {
 }
 
 pub struct Thermostat {
-    outputs: Vec<UTxOBuilder>,
-
     optional_change_address: Option<Address>,
     changes: HashMap<TokenId, UTxOBuilder>,
     extra_changes: Vec<UTxOBuilder>,
@@ -56,6 +53,7 @@ pub struct ThermostatFeeEstimator {
 }
 
 impl ThermostatFeeEstimator {
+    #[allow(unused)]
     pub fn new(network_info: NetworkInfo, plan: &MultisigPlan) -> Self {
         // compute the cost of an empty transaction this is with the
         // the native script included so we know what it will cost
@@ -109,6 +107,7 @@ impl ThermostatFeeEstimator {
         }
     }
 
+    #[allow(unused)]
     pub fn add_protocol_magic(&mut self, protocol_magic: impl AsRef<str>) {
         self.current_size = protocol_magic.as_ref().len() + 5;
         self.cost_metadata = {
@@ -134,7 +133,7 @@ impl TransactionFeeEstimator for ThermostatFeeEstimator {
             + (&self.cost_input * num_inputs))
     }
 
-    fn fee_for_input(&self, input: &Self::InputUtxo) -> anyhow::Result<Value<Regulated>> {
+    fn fee_for_input(&self, _input: &Self::InputUtxo) -> anyhow::Result<Value<Regulated>> {
         Ok(self.cost_input.clone())
     }
 
@@ -163,12 +162,13 @@ impl TransactionFeeEstimator for ThermostatFeeEstimator {
         // in two in order to preserver distribution
         let reserved_room = reserved_room * 2;
 
-        Ok(self.max_size
+        Ok(self
+            .max_size
             .saturating_sub(self.current_size.saturating_add(reserved_room))
             / self.size_of_one_input)
     }
 
-    fn fee_for_output(&self, output: &Self::OutputUtxo) -> anyhow::Result<Value<Regulated>> {
+    fn fee_for_output(&self, _output: &Self::OutputUtxo) -> anyhow::Result<Value<Regulated>> {
         Ok(self.cost_output.clone())
     }
 
@@ -188,10 +188,9 @@ impl TransactionFeeEstimator for ThermostatFeeEstimator {
 }
 
 impl Thermostat {
+    #[allow(unused)]
     pub fn new(config: ThermostatAlgoConfig) -> Self {
         Self {
-            outputs: Vec::new(),
-
             optional_change_address: None,
             changes: HashMap::new(),
             extra_changes: vec![],
@@ -204,18 +203,6 @@ impl Thermostat {
             config,
             available_utxos: Default::default(),
         }
-    }
-
-    fn add_output(&mut self, output: UTxOBuilder) {
-        self.balance -= &output.value;
-        for asset in output.assets.iter() {
-            let balance = self
-                .asset_balance
-                .entry(asset.fingerprint.clone())
-                .or_default();
-            *balance -= &asset.quantity;
-        }
-        self.outputs.push(output);
     }
 
     fn add_input(&mut self, input: UTxODetails) {
@@ -234,7 +221,12 @@ impl Thermostat {
         self.selected_inputs.push(input);
     }
 
-    fn current_balance<Estimate: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>>(&self, estimate: &mut Estimate) -> anyhow::Result<Balance<Regulated>> {
+    fn current_balance<
+        Estimate: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>,
+    >(
+        &self,
+        estimate: &mut Estimate,
+    ) -> anyhow::Result<Balance<Regulated>> {
         Ok(&self.balance - &estimate.min_required_fee()?)
     }
 
@@ -245,7 +237,9 @@ impl Thermostat {
             .expect("We should have a balance for this since we are tracking it down")
     }
 
-    fn select_input_for<Estimate: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>>(
+    fn select_input_for<
+        Estimate: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>,
+    >(
         &mut self,
         utxos: UTxOStore,
         asset: &TokenId,
@@ -258,7 +252,6 @@ impl Thermostat {
             .next()
             .cloned()
             .ok_or_else(|| anyhow!("No more input to select for {asset}"))?;
-
 
         estimate.add_input(utxo.clone())?;
         self.add_input(utxo.clone());
@@ -282,13 +275,14 @@ impl Thermostat {
     /// If there are no inputs to select about this specific item
     /// then the function will fail.
     ///
-    fn select_input_for_asset_until_balanced<Estimate: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>>(
+    fn select_input_for_asset_until_balanced<
+        Estimate: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>,
+    >(
         &mut self,
         mut utxos: UTxOStore,
         asset: &TokenId,
         estimate: &mut Estimate,
     ) -> anyhow::Result<UTxOStore> {
-
         while let Balance::Debt(debt) = self.current_balance_of(asset) {
             utxos = self
                 .select_input_for(utxos, asset, estimate)
@@ -307,7 +301,9 @@ impl Thermostat {
     /// If there are no inputs to select about this specific item
     /// then the function will fail.
     ///
-    fn select_input_for_main_until_balanced<Estimate: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>>(
+    fn select_input_for_main_until_balanced<
+        Estimate: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>,
+    >(
         &mut self,
         mut utxos: UTxOStore,
         estimate: &mut Estimate,
@@ -325,18 +321,21 @@ impl Thermostat {
     /// balance the excess of a given asset (if any)
     ///
     /// This function let us know if the native asset was added in the change
-    fn balance_excess_of_asset<Estimate: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>>(&mut self, utxos: &UTxOStore, asset: TokenId,estimate: &mut Estimate) -> anyhow::Result<()> {
+    fn balance_excess_of_asset<
+        Estimate: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>,
+    >(
+        &mut self,
+        utxos: &UTxOStore,
+        asset: TokenId,
+        estimate: &mut Estimate,
+    ) -> anyhow::Result<()> {
         if let Balance::Excess(excess) = self.current_balance_of(&asset) {
             let address = self
                 .optional_change_address
                 .as_ref()
                 .ok_or_else(|| anyhow!("Change address required"))?;
 
-            let default = UTxOBuilder::new(
-                address.clone(),
-                Value::zero(),
-                vec![],
-            )?;
+            let default = UTxOBuilder::new(address.clone(), Value::zero(), vec![])?;
 
             {
                 // setting the entry in a scope so it does not prevent us from
@@ -345,7 +344,9 @@ impl Thermostat {
                 let entry: &mut UTxOBuilder = match entry {
                     Entry::Occupied(entry) => entry.into_mut(),
                     Entry::Vacant(entry) => {
-                        estimate.add_output(default.clone()).map_err(|err| anyhow!(err))?;
+                        estimate
+                            .add_output(default.clone())
+                            .map_err(|err| anyhow!(err))?;
                         entry.insert(default)
                     }
                 };
@@ -409,25 +410,23 @@ impl Thermostat {
     /// balance the excess of a given asset (if any)
     ///
     /// This function let us know if the native asset was added in the change
-    fn balance_excess<Estimate: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>>(&mut self, estimate: &mut Estimate) -> anyhow::Result<()> {
+    fn balance_excess<
+        Estimate: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>,
+    >(
+        &mut self,
+        estimate: &mut Estimate,
+    ) -> anyhow::Result<()> {
         if let Balance::Excess(_excess) = self.current_balance(estimate)? {
             let address = self
                 .optional_change_address
                 .as_ref()
                 .ok_or_else(|| anyhow!("Change address required"))?;
 
-            let default = UTxOBuilder::new(
-                address.clone(),
-                Value::zero(),
-                vec![],
-            )?;
+            let default = UTxOBuilder::new(address.clone(), Value::zero(), vec![])?;
 
-            let _ = match self.changes.entry(self.config.main_token.clone()) {
-                Entry::Vacant(entry) => {
-                    estimate.add_output(default.clone());
-                    entry.insert(default);
-                }
-                _ => {}
+            if let Entry::Vacant(entry) = self.changes.entry(self.config.main_token.clone()) {
+                estimate.add_output(default.clone())?;
+                entry.insert(default);
             };
         }
 
@@ -437,18 +436,14 @@ impl Thermostat {
                 .as_ref()
                 .ok_or_else(|| anyhow!("Change address required"))?;
 
-            let default = UTxOBuilder::new(
-                address.clone(),
-                Value::zero(),
-                vec![],
-            )?;
+            let default = UTxOBuilder::new(address.clone(), Value::zero(), vec![])?;
 
             let entry = match self.changes.entry(self.config.main_token.clone()) {
                 Entry::Vacant(entry) => {
-                    estimate.add_output(default.clone());
+                    estimate.add_output(default.clone())?;
                     entry.insert(default)
                 }
-                Entry::Occupied(mut entry) => entry.into_mut(),
+                Entry::Occupied(entry) => entry.into_mut(),
             };
 
             entry.value += &excess;
@@ -459,7 +454,13 @@ impl Thermostat {
     }
 
     /// split the accumulator (the changes) if needed
-    fn split_accumulators<Estimate: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>>(&mut self, utxos: &UTxOStore, estimate: &mut Estimate) -> anyhow::Result<()> {
+    fn split_accumulators<
+        Estimate: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>,
+    >(
+        &mut self,
+        utxos: &UTxOStore,
+        estimate: &mut Estimate,
+    ) -> anyhow::Result<()> {
         for (token_id, change) in self.changes.iter_mut() {
             if let Some(total_current_balance) = utxos.get_balance_of(token_id) {
                 let mut new = change.clone();
@@ -512,7 +513,12 @@ impl Thermostat {
         Ok(())
     }
 
-    fn select<Estimate: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>>(&mut self, estimator: &mut Estimate) -> anyhow::Result<()> {
+    fn select<
+        Estimate: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>,
+    >(
+        &mut self,
+        estimator: &mut Estimate,
+    ) -> anyhow::Result<()> {
         let mut utxos = self.available_utxos.clone();
 
         let mut assets: Vec<_> = self.asset_balance.keys().cloned().collect();
@@ -592,17 +598,14 @@ impl Thermostat {
         self.split_accumulators(&utxos, estimator)
     }
 
-    pub fn set_utxos(
-        &mut self,
-        available_inputs: UTxOStore,
-    ) -> anyhow::Result<()> {
+    #[allow(unused)]
+    pub fn set_utxos(&mut self, available_inputs: UTxOStore) -> anyhow::Result<()> {
         self.available_utxos = available_inputs;
         Ok(())
     }
 }
 
-impl InputSelectionAlgorithm for Thermostat
-{
+impl InputSelectionAlgorithm for Thermostat {
     type InputUtxo = UTxODetails;
     type OutputUtxo = UTxOBuilder;
 
@@ -626,10 +629,16 @@ impl InputSelectionAlgorithm for Thermostat
         input_output_setup: InputOutputSetup<Self::InputUtxo, Self::OutputUtxo>,
     ) -> anyhow::Result<InputSelectionResult<Self::InputUtxo, Self::OutputUtxo>> {
         for (token, asset) in input_output_setup.input_asset_balance.iter() {
-            *self.asset_balance.entry(token.clone()).or_insert(Balance::zero()) += asset.quantity.clone();
+            *self
+                .asset_balance
+                .entry(token.clone())
+                .or_insert_with(Balance::zero) += asset.quantity.clone();
         }
         for (token, asset) in input_output_setup.output_asset_balance.iter() {
-            *self.asset_balance.entry(token.clone()).or_insert(Balance::zero()) -= asset.quantity.clone();
+            *self
+                .asset_balance
+                .entry(token.clone())
+                .or_insert_with(Balance::zero) -= asset.quantity.clone();
         }
         self.balance += &input_output_setup.input_balance;
         self.balance -= &input_output_setup.output_balance;
@@ -641,24 +650,30 @@ impl InputSelectionAlgorithm for Thermostat
         let mut input_asset_balance = input_output_setup.input_asset_balance;
         for input in self.selected_inputs.iter() {
             for asset in input.assets.iter() {
-                input_asset_balance.entry(asset.fingerprint.clone()).or_insert(TransactionAsset {
-                    policy_id: asset.policy_id.clone(),
-                    asset_name: asset.asset_name.clone(),
-                    fingerprint: asset.fingerprint.clone(),
-                    quantity: Value::zero(),
-                }).quantity += &asset.quantity;
+                input_asset_balance
+                    .entry(asset.fingerprint.clone())
+                    .or_insert(TransactionAsset {
+                        policy_id: asset.policy_id.clone(),
+                        asset_name: asset.asset_name.clone(),
+                        fingerprint: asset.fingerprint.clone(),
+                        quantity: Value::zero(),
+                    })
+                    .quantity += &asset.quantity;
             }
         }
         let mut output_balance = input_output_setup.output_balance;
         let mut output_asset_balance = input_output_setup.output_asset_balance;
         for input in self.changes.values().chain(self.extra_changes.iter()) {
             for asset in input.assets.iter() {
-                output_asset_balance.entry(asset.fingerprint.clone()).or_insert(TransactionAsset {
-                    policy_id: asset.policy_id.clone(),
-                    asset_name: asset.asset_name.clone(),
-                    fingerprint: asset.fingerprint.clone(),
-                    quantity: Value::zero(),
-                }).quantity += &asset.quantity;
+                output_asset_balance
+                    .entry(asset.fingerprint.clone())
+                    .or_insert(TransactionAsset {
+                        policy_id: asset.policy_id.clone(),
+                        asset_name: asset.asset_name.clone(),
+                        fingerprint: asset.fingerprint.clone(),
+                        quantity: Value::zero(),
+                    })
+                    .quantity += &asset.quantity;
             }
             output_balance += &input.value;
         }
@@ -672,7 +687,12 @@ impl InputSelectionAlgorithm for Thermostat
             fixed_inputs: input_output_setup.fixed_inputs,
             fixed_outputs: input_output_setup.fixed_outputs,
             chosen_inputs: self.selected_inputs.clone(),
-            changes: self.changes.values().chain(self.extra_changes.iter()).cloned().collect(),
+            changes: self
+                .changes
+                .values()
+                .chain(self.extra_changes.iter())
+                .cloned()
+                .collect(),
             fee: estimator.min_required_fee()?,
         })
     }
@@ -682,15 +702,14 @@ impl InputSelectionAlgorithm for Thermostat
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use dcspark_core::cardano::Ada;
-    use dcspark_core::{Normalized, AssetName, PolicyId, OutputIndex};
-    use dcspark_core::tx::TransactionId;
+    use dcspark_core::tx::{TransactionId, UtxoPointer};
+    use dcspark_core::{cardano, AssetName, OutputIndex, PolicyId};
     use deps::serde_json;
+    use std::sync::Arc;
 
     fn thermostat_config() -> ThermostatAlgoConfig {
         ThermostatAlgoConfig {
@@ -718,7 +737,7 @@ mod tests {
                 ]
             }
         })
-            .unwrap();
+        .unwrap();
 
         let thermostat = Thermostat::new(thermostat_config());
         let estimator = ThermostatFeeEstimator::new(NetworkInfo::Testnet, &plan);
@@ -808,27 +827,28 @@ mod tests {
 
         for i in 0..len {
             let tx_id = format!("{i:032}");
-            utxo_sample!(utxo_store, tx_id.clone(), 0, "2.5", "tDRIP", "1000");
-            utxo_sample!(utxo_store, tx_id.clone(), 1, "500",);
-            utxo_sample!(utxo_store, tx_id.clone(), 2, "500", "tDRIP", "1000000");
-            utxo_sample!(utxo_store, tx_id.clone(), 3, "5",);
+            utxo_sample!(utxo_store, tx_id.clone(), 0, "2_500000", "tDRIP", "1000");
+            utxo_sample!(utxo_store, tx_id.clone(), 1, "500_000000",);
+            utxo_sample!(
+                utxo_store,
+                tx_id.clone(),
+                2,
+                "500_000000",
+                "tDRIP",
+                "1000000"
+            );
+            utxo_sample!(utxo_store, tx_id.clone(), 3, "5_000000",);
         }
 
         utxo_store.freeze()
     }
 
-    fn sample_output(
-        id: u64,
-    ) -> (
-        Address,
-        Value<Regulated>,
-        Vec<TransactionAsset>,
-    ) {
+    fn sample_output() -> (Address, Value<Regulated>, Vec<TransactionAsset>) {
         let address =
             Address::new("addr_test1wpjf80wvstelml6vw7d46y6j6575klf3s4mxp7ytrcrz5ecl33pgj");
-        let value: Value<Ada> = "3".parse().unwrap();
+        let value: Value<Regulated> = "3_000000".parse().unwrap();
         let assets = Vec::new();
-        (address, value.to_lovelace().to_regulated(), assets)
+        (address, value, assets)
     }
 
     /// if we have enough WMAIN we don't refill unless we go under
@@ -862,12 +882,15 @@ mod tests {
             input_balance: Default::default(),
             input_asset_balance: Default::default(),
             output_balance: output.value.clone(),
-            output_asset_balance: HashMap::from([(my_token, output.assets.first().cloned().unwrap())]),
+            output_asset_balance: HashMap::from([(
+                my_token,
+                output.assets.first().cloned().unwrap(),
+            )]),
             fixed_inputs: vec![],
             fixed_outputs: vec![output.clone()],
             change_address: Some(Address::new(
                 "addr_test1wpjf80wvstelml6vw7d46y6j6575klf3s4mxp7ytrcrz5ecl33pgj",
-            ))
+            )),
         };
 
         thermostat.set_utxos(utxos).unwrap();
@@ -951,12 +974,15 @@ mod tests {
             input_balance: Default::default(),
             input_asset_balance: Default::default(),
             output_balance: output.value.clone(),
-            output_asset_balance: HashMap::from([(TokenId::new("m10s18"), output.assets.first().cloned().unwrap())]),
+            output_asset_balance: HashMap::from([(
+                TokenId::new("m10s18"),
+                output.assets.first().cloned().unwrap(),
+            )]),
             fixed_inputs: vec![],
             fixed_outputs: vec![output.clone()],
             change_address: Some(Address::new(
                 "addr_test1wz6lvjg3anml96vl22mls5vae3x2cgaqwy2ewp5gj3fcxdcw652wz",
-            ))
+            )),
         };
 
         thermostat.set_utxos(utxos).unwrap();
@@ -1033,12 +1059,15 @@ mod tests {
             input_balance: Default::default(),
             input_asset_balance: Default::default(),
             output_balance: output.value.clone(),
-            output_asset_balance: HashMap::from([(TokenId::new("My Token"), output.assets.first().cloned().unwrap())]),
+            output_asset_balance: HashMap::from([(
+                TokenId::new("My Token"),
+                output.assets.first().cloned().unwrap(),
+            )]),
             fixed_inputs: vec![],
             fixed_outputs: vec![output.clone()],
             change_address: Some(Address::new(
                 "addr_test1wpjf80wvstelml6vw7d46y6j6575klf3s4mxp7ytrcrz5ecl33pgj",
-            ))
+            )),
         };
 
         thermostat.set_utxos(utxos).unwrap();
@@ -1073,7 +1102,16 @@ mod tests {
 
         let changes = result.changes;
         assert_eq!(changes.len(), 2);
-        let change = changes.iter().find(|change| !change.assets.is_empty() && change.assets.iter().any(|asset| asset.fingerprint == TokenId::new("My Token"))).unwrap();
+        let change = changes
+            .iter()
+            .find(|change| {
+                !change.assets.is_empty()
+                    && change
+                        .assets
+                        .iter()
+                        .any(|asset| asset.fingerprint == TokenId::new("My Token"))
+            })
+            .unwrap();
         assert_eq!(
             change.address,
             Address::new("addr_test1wpjf80wvstelml6vw7d46y6j6575klf3s4mxp7ytrcrz5ecl33pgj")
@@ -1087,7 +1125,10 @@ mod tests {
             Value::from(9_000_000_000_000 - 1_000_000)
         );
 
-        let change = changes.iter().find(|change| change.assets.is_empty()).unwrap();
+        let change = changes
+            .iter()
+            .find(|change| change.assets.is_empty())
+            .unwrap();
 
         assert_eq!(
             change.address,
@@ -1105,286 +1146,352 @@ mod tests {
         assert_eq!(change.assets.len(), 0);
     }
 
-    // /// test splitting in two without regrouping
-    // #[test]
-    // fn test_mindblower_3() {
-    //     let mut selection = selection();
-    //     let pending_state = PendingState::temporary();
-    //
-    //     const USER_ADDRESS: &str =
-    //         "addr_test1qqpftzcepsz6c4ecapkr8vzxmyev8yqlny53xp3kxd4p3kuzn0g6ackzyh9r2kj9kgdqx6npjulm3fy6fe9v6unwxxkqxjer8j";
-    //
-    //     let mut utxos = UTxOStore::new().thaw();
-    //     utxo_sample!(utxos, "transaction 1", 0, "9_100_000",);
-    //     for i in 0..9 {
-    //         let tx = format!("{i}");
-    //         utxo_sample!(utxos, tx, 0, "100_000",);
-    //     }
-    //     let utxos = utxos.freeze();
-    //
-    //     // total ada
-    //     let total_ada = Value::<bridge_ir::cardano::Lovelace>::from_regulated(
-    //         &utxos.get_balance_of(&TokenId::MAIN).unwrap(),
-    //     )
-    //         .to_ada();
-    //     assert_eq!(total_ada, Value::from(10_000_000));
-    //     assert_eq!(total_ada / *NUM_ACCUMULATORS, Value::from(500_000));
-    //
-    //     let request = ActionId::new("My Request");
-    //     let address = Address::new(USER_ADDRESS);
-    //     let value: Value<Normalized> = "3".parse().unwrap();
-    //     let assets = vec![];
-    //
-    //     selection.add_protocol_magic("unittest.cardano-evm.c1");
-    //     selection.add_optional_change_address(Address::new(
-    //         "addr_test1wpjf80wvstelml6vw7d46y6j6575klf3s4mxp7ytrcrz5ecl33pgj",
-    //     ));
-    //     selection.add_output(UTxOBuilder::new(address, value, assets, Some(request)).unwrap());
-    //
-    //     selection.select(utxos, &pending_state).unwrap();
-    //
-    //     let inputs = selection.inputs();
-    //     assert_eq!(inputs.len(), 1);
-    //     let input = inputs[0].clone();
-    //     assert_eq!(
-    //         input.pointer.transaction_id,
-    //         TransactionId::new("transaction 1")
-    //     );
-    //
-    //     let outputs = selection.outputs();
-    //     assert_eq!(outputs.len(), 1);
-    //
-    //     let ada_changes: Vec<_> = selection
-    //         .changes()
-    //         .filter(|txb| txb.assets.is_empty())
-    //         .cloned()
-    //         .collect();
-    //     assert_eq!(ada_changes.len(), 2);
-    //     let max_expected_value = Value::<Ada>::from(9_100_000 / 2).to_lovelace();
-    //     let min_expected_value = Value::<Ada>::from((9_100_000 - 3 - 2) / 2).to_lovelace();
-    //     for (i, change) in ada_changes.into_iter().enumerate() {
-    //         assert!(
-    //             change.value > min_expected_value,
-    //             "change[{i}]({value}) > {min_expected_value}",
-    //             value = change.value,
-    //         );
-    //         assert!(
-    //             change.value < max_expected_value,
-    //             "change[{i}]({value}) < {max_expected_value}",
-    //             value = change.value,
-    //         );
-    //     }
-    // }
-    //
-    // /// test splitting in two with regrouping
-    // #[test]
-    // fn test_mindblower_4() {
-    //     let mut selection = selection();
-    //     let pending_state = PendingState::temporary();
-    //
-    //     const USER_ADDRESS: &str =
-    //         "addr_test1qqpftzcepsz6c4ecapkr8vzxmyev8yqlny53xp3kxd4p3kuzn0g6ackzyh9r2kj9kgdqx6npjulm3fy6fe9v6unwxxkqxjer8j";
-    //
-    //     let mut utxos = UTxOStore::new().thaw();
-    //     utxo_sample!(utxos, "transaction 2", 0, "9_000_000",);
-    //     for i in 0..100 {
-    //         let tx = format!("{i}");
-    //         utxo_sample!(utxos, tx, 0, "10_000",);
-    //     }
-    //     let utxos = utxos.freeze();
-    //
-    //     // total ada
-    //     let total_ada = Value::<bridge_ir::cardano::Lovelace>::from_regulated(
-    //         &utxos.get_balance_of(&TokenId::MAIN).unwrap(),
-    //     )
-    //         .to_ada();
-    //     assert_eq!(total_ada, Value::from(10_000_000));
-    //     assert_eq!(total_ada / *NUM_ACCUMULATORS, Value::from(500_000));
-    //
-    //     let request = ActionId::new("My Request");
-    //     let address = Address::new(USER_ADDRESS);
-    //     let value: Value<Normalized> = "3".parse().unwrap();
-    //     let assets = vec![];
-    //
-    //     selection.add_protocol_magic("unittest.cardano-evm.c1");
-    //     selection.add_optional_change_address(Address::new(
-    //         "addr_test1wpjf80wvstelml6vw7d46y6j6575klf3s4mxp7ytrcrz5ecl33pgj",
-    //     ));
-    //     selection.add_output(UTxOBuilder::new(address, value, assets, Some(request)).unwrap());
-    //     selection.select(utxos, &pending_state).unwrap();
-    //
-    //     let inputs = selection.inputs();
-    //     assert_eq!(inputs.len(), 81);
-    //
-    //     let outputs = selection.outputs();
-    //     assert_eq!(outputs.len(), 1);
-    //
-    //     let ada_changes: Vec<_> = selection
-    //         .changes()
-    //         .filter(|txb| txb.assets.is_empty())
-    //         .cloned()
-    //         .collect();
-    //     assert_eq!(ada_changes.len(), 2);
-    //     let max_expected_value = Value::<Ada>::from(9_800_000 / 2).to_lovelace();
-    //     let min_expected_value = Value::<Ada>::from((9_800_000 - 3 - 2) / 2).to_lovelace();
-    //     for (i, change) in ada_changes.into_iter().enumerate() {
-    //         assert!(
-    //             change.value > min_expected_value,
-    //             "change[{i}]({value}) > {min_expected_value}",
-    //             value = change.value,
-    //         );
-    //         assert!(
-    //             change.value < max_expected_value,
-    //             "change[{i}]({value}) < {max_expected_value}",
-    //             value = change.value,
-    //         );
-    //     }
-    //
-    //     // 4_899_998_342_164
-    //     // 4_999_997_000_000
-    //     // 4_999_996_000_000
-    // }
-    //
-    // /// test we are regrouping accumulators **but** only splitting **if**
-    // /// the change output is larger than the _accumulator value target_
-    // #[test]
-    // fn test_mindblower_5() {
-    //     let mut selection = selection();
-    //     let pending_state = PendingState::temporary();
-    //
-    //     const USER_ADDRESS: &str =
-    //         "addr_test1qqpftzcepsz6c4ecapkr8vzxmyev8yqlny53xp3kxd4p3kuzn0g6ackzyh9r2kj9kgdqx6npjulm3fy6fe9v6unwxxkqxjer8j";
-    //
-    //     let mut utxos = UTxOStore::new().thaw();
-    //     for i in 0..20 {
-    //         let tx = format!("accumulator {i}");
-    //         utxo_sample!(utxos, tx, 0, "1_000_000",);
-    //     }
-    //     let utxos = utxos.freeze();
-    //
-    //     // total ada
-    //     let total_ada = utxos.get_balance_of(&TokenId::MAIN).unwrap();
-    //     assert_eq!(total_ada, Value::from(20_000_000_000_000));
-    //     assert_eq!(
-    //         total_ada / *NUM_ACCUMULATORS,
-    //         Value::from(1_000_000_000_000)
-    //     );
-    //
-    //     let request = ActionId::new("My Request");
-    //     let address = Address::new(USER_ADDRESS);
-    //     let value: Value<Normalized> = "2_000_000".parse().unwrap();
-    //     let assets = vec![];
-    //
-    //     selection.add_protocol_magic("unittest.cardano-evm.c1");
-    //     selection.add_optional_change_address(Address::new(
-    //         "addr_test1wpjf80wvstelml6vw7d46y6j6575klf3s4mxp7ytrcrz5ecl33pgj",
-    //     ));
-    //     selection.add_output(UTxOBuilder::new(address, value, assets, Some(request)).unwrap());
-    //
-    //     selection.select(utxos, &pending_state).unwrap();
-    //
-    //     let inputs = selection.inputs();
-    //     assert_eq!(inputs.len(), 3);
-    //
-    //     let outputs = selection.outputs();
-    //     assert_eq!(outputs.len(), 1);
-    //
-    //     let ada_changes: Vec<_> = selection
-    //         .changes()
-    //         .filter(|txb| txb.assets.is_empty())
-    //         .cloned()
-    //         .collect();
-    //     // we are expecting a split to happen. Indeed we are withdrawing 2millions Ada
-    //     // from the UTxO so we are dropping the total ada to 18millions for 20 accumulator.
-    //     // the pivot is now `18m / 20m = 0.9m`.
-    //     //
-    //     // without the split of the accumulator, we would have an a change of
-    //     // `999_999.808099` (0.99m). So we need to split it in order to have
-    //     // 17 UTxO with 1m and 2 UTxO with 0.5m.
-    //     assert_eq!(ada_changes.len(), 2);
-    //     let max_expected_value = Value::<Ada>::from(500_000).to_lovelace();
-    //     let min_expected_value = Value::<Ada>::from(499_997).to_lovelace();
-    //     for change in ada_changes {
-    //         assert!(
-    //             change.value > min_expected_value,
-    //             "{value} > {min_expected_value}",
-    //             value = change.value
-    //         );
-    //         assert!(
-    //             change.value < max_expected_value,
-    //             "{value} < {max_expected_value}",
-    //             value = change.value
-    //         );
-    //     }
-    // }
-    //
-    // #[test]
-    // fn test_1() {
-    //     let mut selection = selection();
-    //     let pending_state = PendingState::temporary();
-    //     let utxos = utxos(1);
-    //     let (output_action, output_address, _, _) = sample_output(1);
-    //     let output_assets = utxo_asset_sample!("tDRIP", "100");
-    //
-    //     selection.add_protocol_magic("unittest.cardano-evm.c1");
-    //     selection.add_optional_change_address(Address::new(
-    //         "addr_test1wpjf80wvstelml6vw7d46y6j6575klf3s4mxp7ytrcrz5ecl33pgj",
-    //     ));
-    //     selection.add_output(
-    //         UTxOBuilder::new(
-    //             output_address,
-    //             Value::<cardano::Ada>::from(3),
-    //             output_assets,
-    //             Some(output_action),
-    //         )
-    //             .unwrap(),
-    //     );
-    //
-    //     selection.select(utxos, &pending_state).unwrap();
-    //
-    //     dbg!(selection.required_fees());
-    //     dbg!(selection.inputs());
-    //     dbg!(selection.outputs());
-    //     dbg!(selection.changes().collect::<Vec<_>>());
-    //
-    //     assert_eq!(selection.current_balance(), Balance::Balanced);
-    //     for (asset, balance) in selection.asset_balance.iter() {
-    //         assert_eq!(balance, &Balance::Balanced, "Failed to balance {asset}");
-    //     }
-    // }
-    //
-    // #[test]
-    // fn test_2() {
-    //     let mut selection = selection();
-    //     let pending_state = PendingState::temporary();
-    //     let utxos = utxos(1);
-    //     let (output_action, output_address, _, _) = sample_output(20_000);
-    //     let output_assets = utxo_asset_sample!("tDRIP", "100");
-    //
-    //     selection.add_protocol_magic("unittest.cardano-evm.c1");
-    //     selection.add_optional_change_address(Address::new(
-    //         "addr_test1wpjf80wvstelml6vw7d46y6j6575klf3s4mxp7ytrcrz5ecl33pgj",
-    //     ));
-    //     selection.add_output(
-    //         UTxOBuilder::new(
-    //             output_address,
-    //             Value::<cardano::Ada>::from(3),
-    //             output_assets,
-    //             Some(output_action),
-    //         )
-    //             .unwrap(),
-    //     );
-    //
-    //     selection.select(utxos, &pending_state).unwrap();
-    //
-    //     dbg!(selection.required_fees());
-    //     dbg!(selection.inputs());
-    //     dbg!(selection.outputs());
-    //     dbg!(selection.changes().collect::<Vec<_>>());
-    //
-    //     assert_eq!(selection.current_balance(), Balance::Balanced);
-    //     for (asset, balance) in selection.asset_balance.iter() {
-    //         assert_eq!(balance, &Balance::Balanced, "Failed to balance {asset}");
-    //     }
-    // }
+    /// test splitting in two without regrouping
+    #[test]
+    fn test_mindblower_3() {
+        const USER_ADDRESS: &str =
+            "addr_test1qqpftzcepsz6c4ecapkr8vzxmyev8yqlny53xp3kxd4p3kuzn0g6ackzyh9r2kj9kgdqx6npjulm3fy6fe9v6unwxxkqxjer8j";
+
+        let mut utxos = UTxOStore::new().thaw();
+        utxo_sample!(utxos, "transaction 1", 0, "9_100_000_000000",);
+        for i in 0..9 {
+            let tx = format!("{i}");
+            utxo_sample!(utxos, tx, 0, "100_000_000000",);
+        }
+        let utxos = utxos.freeze();
+
+        // total ada
+        let total_ada = Value::<cardano::Lovelace>::from_regulated(
+            &utxos.get_balance_of(&TokenId::MAIN).unwrap(),
+        )
+        .to_ada();
+        assert_eq!(total_ada, Value::from(10_000_000));
+        assert_eq!(
+            total_ada / thermostat_config().num_accumulators,
+            Value::from(500_000)
+        );
+
+        let address = Address::new(USER_ADDRESS);
+        let value: Value<Regulated> = "3_000000".parse().unwrap();
+        let assets = vec![];
+
+        let (mut thermostat, mut estimator) = selection();
+        estimator.add_protocol_magic("unittest.cardano-evm.c1");
+
+        let output = UTxOBuilder::new(address, value, assets).unwrap();
+        let setup = InputOutputSetup::<UTxODetails, UTxOBuilder> {
+            input_balance: Default::default(),
+            input_asset_balance: Default::default(),
+            output_balance: output.value.clone(),
+            output_asset_balance: HashMap::new(),
+            fixed_inputs: vec![],
+            fixed_outputs: vec![output.clone()],
+            change_address: Some(Address::new(
+                "addr_test1wpjf80wvstelml6vw7d46y6j6575klf3s4mxp7ytrcrz5ecl33pgj",
+            )),
+        };
+
+        thermostat.set_utxos(utxos).unwrap();
+        estimator.add_output(output).unwrap();
+
+        let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
+
+        let inputs = result.chosen_inputs;
+        assert_eq!(inputs.len(), 1);
+        let input = inputs[0].clone();
+        assert_eq!(
+            input.pointer.transaction_id,
+            TransactionId::new("transaction 1")
+        );
+
+        let outputs = result.fixed_outputs;
+        assert_eq!(outputs.len(), 1);
+
+        let ada_changes: Vec<_> = result
+            .changes
+            .iter()
+            .filter(|txb| txb.assets.is_empty())
+            .cloned()
+            .collect();
+        assert_eq!(ada_changes.len(), 2);
+        let max_expected_value = Value::<Ada>::from(9_100_000 / 2)
+            .to_lovelace()
+            .to_regulated();
+        let min_expected_value = Value::<Ada>::from((9_100_000 - 3 - 2) / 2)
+            .to_lovelace()
+            .to_regulated();
+        for (i, change) in ada_changes.into_iter().enumerate() {
+            assert!(
+                change.value > min_expected_value,
+                "change[{i}]({value}) > {min_expected_value}",
+                value = change.value,
+            );
+            assert!(
+                change.value < max_expected_value,
+                "change[{i}]({value}) < {max_expected_value}",
+                value = change.value,
+            );
+        }
+    }
+
+    /// test splitting in two with regrouping
+    #[test]
+    fn test_mindblower_4() {
+        const USER_ADDRESS: &str =
+            "addr_test1qqpftzcepsz6c4ecapkr8vzxmyev8yqlny53xp3kxd4p3kuzn0g6ackzyh9r2kj9kgdqx6npjulm3fy6fe9v6unwxxkqxjer8j";
+
+        let mut utxos = UTxOStore::new().thaw();
+        utxo_sample!(utxos, "transaction 2", 0, "9_000_000_000000",);
+        for i in 0..100 {
+            let tx = format!("{i}");
+            utxo_sample!(utxos, tx, 0, "10_000_000000",);
+        }
+        let utxos = utxos.freeze();
+
+        // total ada
+        let total_ada = Value::<cardano::Lovelace>::from_regulated(
+            &utxos.get_balance_of(&TokenId::MAIN).unwrap(),
+        )
+        .to_ada();
+        assert_eq!(total_ada, Value::from(10_000_000));
+        assert_eq!(
+            total_ada / thermostat_config().num_accumulators,
+            Value::from(500_000)
+        );
+
+        let address = Address::new(USER_ADDRESS);
+        let value: Value<Regulated> = "3_000000".parse().unwrap();
+        let assets = vec![];
+
+        let (mut thermostat, mut estimator) = selection();
+        estimator.add_protocol_magic("unittest.cardano-evm.c1");
+
+        let output = UTxOBuilder::new(address, value, assets).unwrap();
+        let setup = InputOutputSetup::<UTxODetails, UTxOBuilder> {
+            input_balance: Default::default(),
+            input_asset_balance: Default::default(),
+            output_balance: output.value.clone(),
+            output_asset_balance: HashMap::new(),
+            fixed_inputs: vec![],
+            fixed_outputs: vec![output.clone()],
+            change_address: Some(Address::new(
+                "addr_test1wpjf80wvstelml6vw7d46y6j6575klf3s4mxp7ytrcrz5ecl33pgj",
+            )),
+        };
+
+        thermostat.set_utxos(utxos).unwrap();
+        estimator.add_output(output).unwrap();
+
+        let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
+
+        let inputs = result.chosen_inputs;
+        assert_eq!(inputs.len(), 81);
+
+        let outputs = result.fixed_outputs;
+        assert_eq!(outputs.len(), 1);
+
+        let ada_changes: Vec<_> = result
+            .changes
+            .iter()
+            .filter(|txb| txb.assets.is_empty())
+            .cloned()
+            .collect();
+        assert_eq!(ada_changes.len(), 2);
+        let max_expected_value = Value::<Ada>::from(9_800_000 / 2)
+            .to_lovelace()
+            .to_regulated();
+        let min_expected_value = Value::<Ada>::from((9_800_000 - 3 - 2) / 2)
+            .to_lovelace()
+            .to_regulated();
+        for (i, change) in ada_changes.into_iter().enumerate() {
+            assert!(
+                change.value > min_expected_value,
+                "change[{i}]({value}) > {min_expected_value}",
+                value = change.value,
+            );
+            assert!(
+                change.value < max_expected_value,
+                "change[{i}]({value}) < {max_expected_value}",
+                value = change.value,
+            );
+        }
+
+        // 4_899_998_342_164
+        // 4_999_997_000_000
+        // 4_999_996_000_000
+    }
+
+    /// test we are regrouping accumulators **but** only splitting **if**
+    /// the change output is larger than the _accumulator value target_
+    #[test]
+    fn test_mindblower_5() {
+        const USER_ADDRESS: &str =
+            "addr_test1qqpftzcepsz6c4ecapkr8vzxmyev8yqlny53xp3kxd4p3kuzn0g6ackzyh9r2kj9kgdqx6npjulm3fy6fe9v6unwxxkqxjer8j";
+
+        let mut utxos = UTxOStore::new().thaw();
+        for i in 0..20 {
+            let tx = format!("accumulator {i}");
+            utxo_sample!(utxos, tx, 0, "1_000_000_000000",);
+        }
+        let utxos = utxos.freeze();
+
+        // total ada
+        let total_ada = utxos.get_balance_of(&TokenId::MAIN).unwrap();
+        assert_eq!(total_ada, Value::from(20_000_000_000_000));
+        assert_eq!(
+            total_ada / thermostat_config().num_accumulators,
+            Value::from(1_000_000_000_000)
+        );
+
+        let address = Address::new(USER_ADDRESS);
+        let value: Value<Regulated> = "2_000_000_000000".parse().unwrap();
+        let assets = vec![];
+
+        let (mut thermostat, mut estimator) = selection();
+        estimator.add_protocol_magic("unittest.cardano-evm.c1");
+
+        let output = UTxOBuilder::new(address, value, assets).unwrap();
+        let setup = InputOutputSetup::<UTxODetails, UTxOBuilder> {
+            input_balance: Default::default(),
+            input_asset_balance: Default::default(),
+            output_balance: output.value.clone(),
+            output_asset_balance: HashMap::new(),
+            fixed_inputs: vec![],
+            fixed_outputs: vec![output.clone()],
+            change_address: Some(Address::new(
+                "addr_test1wpjf80wvstelml6vw7d46y6j6575klf3s4mxp7ytrcrz5ecl33pgj",
+            )),
+        };
+
+        thermostat.set_utxos(utxos).unwrap();
+        estimator.add_output(output).unwrap();
+
+        let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
+
+        let inputs = result.chosen_inputs;
+        assert_eq!(inputs.len(), 3);
+
+        let outputs = result.fixed_outputs;
+        assert_eq!(outputs.len(), 1);
+
+        let ada_changes: Vec<_> = result
+            .changes
+            .iter()
+            .filter(|txb| txb.assets.is_empty())
+            .cloned()
+            .collect();
+        // we are expecting a split to happen. Indeed we are withdrawing 2millions Ada
+        // from the UTxO so we are dropping the total ada to 18millions for 20 accumulator.
+        // the pivot is now `18m / 20m = 0.9m`.
+        //
+        // without the split of the accumulator, we would have an a change of
+        // `999_999.808099` (0.99m). So we need to split it in order to have
+        // 17 UTxO with 1m and 2 UTxO with 0.5m.
+        assert_eq!(ada_changes.len(), 2);
+        let max_expected_value = Value::<Ada>::from(500_000).to_lovelace().to_regulated();
+        let min_expected_value = Value::<Ada>::from(499_997).to_lovelace().to_regulated();
+        for change in ada_changes {
+            assert!(
+                change.value > min_expected_value,
+                "{value} > {min_expected_value}",
+                value = change.value
+            );
+            assert!(
+                change.value < max_expected_value,
+                "{value} < {max_expected_value}",
+                value = change.value
+            );
+        }
+    }
+
+    #[test]
+    fn test_1() {
+        let utxos = utxos(1);
+        let (output_address, _, _) = sample_output();
+        let output_assets = utxo_asset_sample!("tDRIP", "100");
+
+        let output = UTxOBuilder::new(
+            output_address,
+            Value::<cardano::Ada>::from(3).to_lovelace().to_regulated(),
+            output_assets.clone(),
+        )
+        .unwrap();
+        let (mut thermostat, mut estimator) = selection();
+        estimator.add_protocol_magic("unittest.cardano-evm.c1");
+
+        let setup = InputOutputSetup::<UTxODetails, UTxOBuilder> {
+            input_balance: Default::default(),
+            input_asset_balance: Default::default(),
+            output_balance: output.value.clone(),
+            output_asset_balance: HashMap::from_iter(
+                output_assets
+                    .iter()
+                    .map(|asset| (asset.fingerprint.clone(), asset.clone())),
+            ),
+            fixed_inputs: vec![],
+            fixed_outputs: vec![output.clone()],
+            change_address: Some(Address::new(
+                "addr_test1wpjf80wvstelml6vw7d46y6j6575klf3s4mxp7ytrcrz5ecl33pgj",
+            )),
+        };
+
+        thermostat.set_utxos(utxos).unwrap();
+        estimator.add_output(output).unwrap();
+
+        let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
+
+        assert_eq!(
+            result.balance - estimator.min_required_fee().unwrap(),
+            Balance::Balanced
+        );
+        for (asset, balance) in result.asset_balance.iter() {
+            assert_eq!(balance, &Balance::Balanced, "Failed to balance {asset}");
+        }
+    }
+
+    #[test]
+    fn test_2() {
+        let utxos = utxos(1);
+        let (output_address, _, _) = sample_output();
+        let output_assets = utxo_asset_sample!("tDRIP", "100");
+
+        let output = UTxOBuilder::new(
+            output_address,
+            Value::<cardano::Ada>::from(3).to_lovelace().to_regulated(),
+            output_assets.clone(),
+        )
+        .unwrap();
+
+        let (mut thermostat, mut estimator) = selection();
+        estimator.add_protocol_magic("unittest.cardano-evm.c1");
+
+        let setup = InputOutputSetup::<UTxODetails, UTxOBuilder> {
+            input_balance: Default::default(),
+            input_asset_balance: Default::default(),
+            output_balance: output.value.clone(),
+            output_asset_balance: HashMap::from_iter(
+                output_assets
+                    .iter()
+                    .map(|asset| (asset.fingerprint.clone(), asset.clone())),
+            ),
+            fixed_inputs: vec![],
+            fixed_outputs: vec![output.clone()],
+            change_address: Some(Address::new(
+                "addr_test1wpjf80wvstelml6vw7d46y6j6575klf3s4mxp7ytrcrz5ecl33pgj",
+            )),
+        };
+
+        thermostat.set_utxos(utxos).unwrap();
+        estimator.add_output(output).unwrap();
+
+        let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
+
+        assert_eq!(
+            result.balance - estimator.min_required_fee().unwrap(),
+            Balance::Balanced
+        );
+        for (asset, balance) in result.asset_balance.iter() {
+            assert_eq!(balance, &Balance::Balanced, "Failed to balance {asset}");
+        }
+    }
 }

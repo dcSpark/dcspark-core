@@ -1,8 +1,5 @@
 use crate::common::{InputOutputSetup, InputSelectionResult};
 use crate::estimate::TransactionFeeEstimator;
-use crate::UTxOBuilder;
-use cardano_multiplatform_lib::error::JsError;
-use dcspark_core::tx::UTxODetails;
 
 pub trait InputSelectionAlgorithm {
     type InputUtxo: Clone;

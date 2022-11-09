@@ -3,12 +3,10 @@ use crate::algorithms::utils;
 use crate::algorithms::utils::result_from_cml;
 use crate::common::{InputOutputSetup, InputSelectionResult};
 use crate::estimate::TransactionFeeEstimator;
-use crate::UTxOBuilder;
 use cardano_multiplatform_lib::builders::input_builder::InputBuilderResult;
-use cardano_multiplatform_lib::error::JsError;
+use cardano_multiplatform_lib::TransactionOutput;
 use cardano_utils::conversion::multiasset_iter;
 use std::collections::HashSet;
-use cardano_multiplatform_lib::TransactionOutput;
 
 pub struct LargestFirstMultiAsset {
     available_inputs: Vec<InputBuilderResult>,
@@ -26,8 +24,7 @@ impl LargestFirstMultiAsset {
     }
 }
 
-impl InputSelectionAlgorithm for LargestFirstMultiAsset
-{
+impl InputSelectionAlgorithm for LargestFirstMultiAsset {
     type InputUtxo = InputBuilderResult;
     type OutputUtxo = TransactionOutput;
 
@@ -104,6 +101,9 @@ impl InputSelectionAlgorithm for LargestFirstMultiAsset
     }
 
     fn available_inputs(&self) -> Vec<Self::InputUtxo> {
-        self.available_indices.iter().map(|index| self.available_inputs[*index].clone()).collect()
+        self.available_indices
+            .iter()
+            .map(|index| self.available_inputs[*index].clone())
+            .collect()
     }
 }

@@ -2,14 +2,11 @@ use crate::algorithm::InputSelectionAlgorithm;
 use crate::algorithms::utils;
 use crate::common::{InputOutputSetup, InputSelectionResult};
 use crate::estimate::TransactionFeeEstimator;
-use crate::UTxOBuilder;
-use cardano_multiplatform_lib::builders::input_builder::InputBuilderResult;
-use cardano_multiplatform_lib::error::JsError;
-use cardano_multiplatform_lib::TransactionOutput;
-use dcspark_core::tx::UTxODetails;
-use dcspark_core::{Balance, Regulated, Value};
-use std::collections::HashSet;
 use anyhow::anyhow;
+use cardano_multiplatform_lib::builders::input_builder::InputBuilderResult;
+use cardano_multiplatform_lib::TransactionOutput;
+use dcspark_core::Balance;
+use std::collections::HashSet;
 
 pub struct LargestFirst {
     available_inputs: Vec<InputBuilderResult>,
@@ -111,9 +108,7 @@ mod tests {
     use crate::algorithms::LargestFirst;
     use crate::{DummyCmlFeeEstimate, InputOutputSetup, InputSelectionAlgorithm};
     use cardano_multiplatform_lib::address::Address;
-    use cardano_multiplatform_lib::builders::input_builder::{
-        InputBuilderResult, SingleInputBuilder,
-    };
+    use cardano_multiplatform_lib::builders::input_builder::SingleInputBuilder;
     use cardano_multiplatform_lib::crypto::TransactionHash;
     use cardano_multiplatform_lib::ledger::common::value::{BigNum, Coin, Value};
     use cardano_multiplatform_lib::{TransactionInput, TransactionOutput};
@@ -181,10 +176,7 @@ mod tests {
         .payment_key()
         .unwrap();
         largest_first
-            .set_available_inputs(vec![
-                input_builder_result_1.clone(),
-                input_builder_result_2.clone(),
-            ])
+            .set_available_inputs(vec![input_builder_result_1, input_builder_result_2.clone()])
             .unwrap();
         let result = largest_first
             .select_inputs(

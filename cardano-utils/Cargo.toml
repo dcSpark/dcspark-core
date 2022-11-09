@@ -11,8 +11,8 @@ dcspark-core = { version = "0.1.0", path = "../core" }
 
 anyhow = { version = "1" }
 bech32 = { version = "0.9" }
-cardano-multiplatform-lib = { git = "https://github.com/dcSpark/cardano-multiplatform-lib.git", branch = "egostkin/utxo-selection-changes", commit = "a41264b88c9b48ac890c2d046fe916f224fccabb" }
-cryptoxide = "0.4.2"
+cryptoxide = { version = "0.4.2" }
+cardano-multiplatform-lib = { git = "https://github.com/dcSpark/cardano-multiplatform-lib.git", rev = "a41264b88c9b48ac890c2d046fe916f224fccabb" }
 hex = { version = "0.4" }
-rand = "0.8.5"
+rand = { version = "0.8.5" }
 serde = { version = "1.0.144", features = ["derive", "rc" ] }

@@ -9,8 +9,6 @@ jobs:
       matrix:
         rust:
           - stable
-          - beta
-          - 1.57.0  # Minimum supported rust version
 
     steps:
       - name: "Checkout"

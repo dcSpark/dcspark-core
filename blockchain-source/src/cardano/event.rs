@@ -153,8 +153,9 @@ impl BlockEvent {
             .context("failed to deserialize block");
 
         if let Ok(block) = block {
-            let id = BlockId::new(block.header().hash().to_string());
-            let block_number = BlockNumber::new(block.header().block_number());
+            let header = block.header();
+            let id = BlockId::new(header.hash().to_string());
+            let block_number = BlockNumber::new(header.block_number());
 
             let parent_id = get_parent_id(&block.header());
 
@@ -163,7 +164,7 @@ impl BlockEvent {
                 id,
                 parent_id,
                 block_number,
-                slot_number: SlotNumber::new(block.header().slot()),
+                slot_number: SlotNumber::new(header.slot()),
                 is_boundary_block: false,
                 // this is not in the header, and computing it requires knowing the network
                 // details, which makes implementing `Serialize` and `Deserialize`more complicated,

@@ -1,3 +1,5 @@
+pub mod rollback;
+
 use crate::{EventObject, GetNextFrom, PullFrom, Source};
 use anyhow::{anyhow, Result};
 use multiverse::{BestBlock, BestBlockSelectionRule, Variant};
@@ -53,7 +55,7 @@ impl<K, V, InnerSource> MultiverseSource<K, V, InnerSource> {
 impl<K, V, InnerSource, ScalarInnerFrom> Source for MultiverseSource<K, V, InnerSource>
 where
     InnerSource: Source<Event = V, From = Vec<ScalarInnerFrom>> + Send,
-    ScalarInnerFrom: PullFrom + PartialEq + Clone + Sync,
+    ScalarInnerFrom: PullFrom + PartialEq + Clone + Sync + std::fmt::Debug,
     V: GetNextFrom<From = ScalarInnerFrom>,
     K: AsRef<[u8]> + Eq + Hash + Debug + Clone + Display + PullFrom + Sync,
     V: Variant<Key = K> + Clone + EventObject,
@@ -61,6 +63,7 @@ where
     type Event = InnerSource::Event;
     type From = Option<ScalarInnerFrom>;
 
+    #[tracing::instrument(skip(self), fields(self.confirmed = ?self.confirmed))]
     async fn pull(&mut self, from: &Self::From) -> Result<Option<Self::Event>> {
         let confirmed_with_parent = self
             .confirmed
@@ -110,6 +113,9 @@ where
                             from == &confirmed_point,
                             "non continuous pull not supported yet"
                         );
+
+                        // TODO: re-check this
+                        checkpoints.push(from.clone());
                     }
                 } else if let Some(from) = from {
                     checkpoints.push(from.clone());
@@ -135,34 +141,15 @@ where
             None => return Ok(None),
         };
 
-        self.multiverse.insert(block)?;
+        let new_stable_position =
+            multiverse_insert_and_gc(block, &mut self.multiverse, self.confirmation_depth)?;
 
-        let BestBlock {
-            selected,
-            discarded,
-        } = {
-            let _span =
-                tracing::span!(tracing::Level::INFO, "selecting best root options").entered();
-            self.multiverse
-                .select_best_block(BestBlockSelectionRule::LongestChain {
-                    depth: self.confirmation_depth,
-                    age_gap: 1,
-                })
-        };
-
-        {
-            let _span =
-                tracing::span!(tracing::Level::DEBUG, "pruning discarded branches", num_discarded = %discarded.len()).entered();
-            for discarded in discarded {
-                tracing::info!(block_id = %discarded, "pruning branch");
-
-                self.multiverse.remove(&discarded)?;
-            }
-        }
-
-        let new_stable_position = selected.map(|entry_ref| entry_ref.inner().clone());
-
-        if let Some(stable) = new_stable_position {
+        if let Some(stable) = new_stable_position.filter(|stable| {
+            self.confirmed
+                .as_ref()
+                .map(|confirmed| stable != confirmed)
+                .unwrap_or(true)
+        }) {
             let block = self
                 .multiverse
                 .get(&stable)
@@ -177,6 +164,43 @@ where
     }
 }
 
+pub(crate) fn multiverse_insert_and_gc<K, V>(
+    event: V,
+    multiverse: &mut multiverse::Multiverse<K, V>,
+    confirmation_depth: usize,
+) -> Result<Option<K>>
+where
+    K: AsRef<[u8]> + Eq + Hash + Debug + Clone + Display + Sync,
+    V: Variant<Key = K>,
+{
+    tracing::debug!(id = ?event.id(), parent = ?event.parent_id(), "inserting block in the multiverse");
+
+    multiverse.insert(event)?;
+
+    let BestBlock {
+        selected,
+        discarded,
+    } = {
+        let _span = tracing::span!(tracing::Level::INFO, "selecting best root options").entered();
+        multiverse.select_best_block(BestBlockSelectionRule::LongestChain {
+            depth: confirmation_depth,
+            age_gap: 1,
+        })
+    };
+
+    {
+        let _span =
+                tracing::span!(tracing::Level::DEBUG, "pruning discarded branches", num_discarded = %discarded.len()).entered();
+        for discarded in discarded {
+            tracing::debug!(block_id = %discarded, "pruning branch");
+
+            multiverse.remove(&discarded)?;
+        }
+    }
+
+    Ok(selected.map(|entry_ref| entry_ref.inner().clone()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,7 +211,7 @@ mod tests {
     use std::collections::HashMap;
 
     #[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
-    struct K(String);
+    pub struct K(pub String);
 
     impl PullFrom for K {}
 
@@ -203,11 +227,11 @@ mod tests {
         }
     }
 
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-    struct V {
-        id: K,
-        parent_id: K,
-        block_number: BlockNumber,
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    pub struct V {
+        pub id: K,
+        pub parent_id: K,
+        pub block_number: BlockNumber,
     }
 
     impl EventObject for V {

@@ -1,4 +1,4 @@
-use super::Point;
+use super::{time::Era, Point};
 use cardano_sdk::protocol::Magic;
 use dcspark_core::{BlockId, SlotNumber};
 use std::borrow::Cow;
@@ -8,6 +8,9 @@ pub struct NetworkConfiguration {
     pub chain_info: ChainInfo,
     pub relay: (Cow<'static, str>, u16),
     pub from: Point,
+    pub genesis_parent: BlockId,
+    pub genesis: BlockId,
+    pub shelley_era_config: Era,
 }
 
 #[derive(Clone, Debug, serde::Deserialize)]
@@ -51,6 +54,13 @@ impl NetworkConfiguration {
                     "aa83acbf5904c0edfe4d79b3689d3d00fcfc553cf360fd2229b98d464c28e9de",
                 ),
             },
+            genesis_parent: BlockId::new(
+                "5f20df933584822601f9e3f8c024eb5eb252fe8cefb24d1317dc3d432e940ebb",
+            ),
+            genesis: BlockId::new(
+                "89d9b5a5b8ddc8d7e5a6795e9774d97faf1efea59b2caf7eaf9f8c5b32059df4",
+            ),
+            shelley_era_config: Era::SHELLEY_MAINNET,
         }
     }
 
@@ -64,6 +74,13 @@ impl NetworkConfiguration {
                     "c4a1595c5cc7a31eda9e544986fe9387af4e3491afe0ca9a80714f01951bbd5c",
                 ),
             },
+            genesis_parent: BlockId::new(
+                "d4b8de7a11d929a323373cbab6c1a9bdc931beffff11db111cf9d57356ee1937",
+            ),
+            genesis: BlockId::new(
+                "9ad7ff320c9cf74e0f5ee78d22a85ce42bb0a487d0506bf60cfb5a91ea4497d2",
+            ),
+            shelley_era_config: Era::SHELLEY_PREPROD,
         }
     }
 
@@ -77,6 +94,13 @@ impl NetworkConfiguration {
                     "8542d7f0b744f40f3de6164294b5feb0095307d46c7290acc8a5d9bd802acb8e",
                 ),
             },
+            genesis_parent: BlockId::new(
+                "72593f260b66f26bef4fc50b38a8f24d3d3633ad2e854eaf73039eb9402706f1",
+            ),
+            genesis: BlockId::new(
+                "268ae601af8f9214804735910a3301881fbe0eec9936db7d1fb9fc39e93d1e37",
+            ),
+            shelley_era_config: Era::SHELLEY_PREVIEW,
         }
     }
 }

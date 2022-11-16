@@ -62,6 +62,17 @@ impl PullFrom for BlockNumber {}
 impl PullFrom for BlockId {}
 impl PullFrom for TransactionId {}
 impl PullFrom for Point {}
+impl PullFrom for () {}
 
 impl<T: PullFrom> PullFrom for Vec<T> {}
 impl<T: PullFrom> PullFrom for Option<T> {}
+
+#[async_trait]
+impl<T: EventObject> Source for Option<T> {
+    type Event = T;
+    type From = ();
+
+    async fn pull(&mut self, _from: &Self::From) -> Result<Option<Self::Event>> {
+        Ok(self.take())
+    }
+}

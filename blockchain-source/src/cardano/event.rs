@@ -1,6 +1,7 @@
 use crate::{EventObject, GetNextFrom};
 use anyhow::Context;
 use cardano_sdk::protocol::SerializedBlock;
+use cbored::Encode;
 use dcspark_core::{BlockId, BlockNumber, SlotNumber};
 use serde::de::Visitor;
 
@@ -55,7 +56,9 @@ impl serde::Serialize for BlockEvent {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_bytes(self.raw_block.as_ref())
+        let mut writer = cbored::Writer::new();
+        self.raw_block.encode(&mut writer);
+        serializer.serialize_bytes(&writer.finalize())
     }
 }
 
@@ -77,19 +80,32 @@ impl<'de> serde::Deserialize<'de> for BlockEvent {
             where
                 E: serde::de::Error,
             {
-                let mut reader = cbored::Reader::new(buf);
+                decode_deserialized_block(buf).map_err(serde::de::Error::custom)
+            }
 
-                let raw_block: SerializedBlock = reader
-                    .decode()
-                    .context("invalid block")
-                    .map_err(serde::de::Error::custom)?;
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                self,
+                mut seq: A,
+            ) -> Result<Self::Value, A::Error> {
+                let mut buf: Vec<u8> = Vec::with_capacity(seq.size_hint().unwrap_or(0));
+                while let Some(byte) = seq.next_element()? {
+                    buf.push(byte);
+                }
 
-                BlockEvent::from_serialized_block(raw_block).map_err(serde::de::Error::custom)
+                decode_deserialized_block(&buf).map_err(serde::de::Error::custom)
             }
         }
 
         deserializer.deserialize_bytes(V)
     }
+}
+
+fn decode_deserialized_block(buf: &[u8]) -> anyhow::Result<BlockEvent> {
+    let mut reader = cbored::Reader::new(buf);
+
+    let raw_block: SerializedBlock = reader.decode().context("invalid block")?;
+
+    BlockEvent::from_serialized_block(raw_block)
 }
 
 pub(crate) fn get_parent_id(header: &cardano_sdk::chain::Header) -> BlockId {

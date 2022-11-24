@@ -265,7 +265,7 @@ async fn block_fetch(
     let _ = block_fetcher.next().await?;
 
     while let Some(raw_block) = block_fetcher.next().await? {
-        let event = BlockEvent::from_serialized_block(raw_block);
+        let event = BlockEvent::from_serialized_block(raw_block.as_ref());
 
         if channel
             .send(event.map(CardanoNetworkEvent::Block))

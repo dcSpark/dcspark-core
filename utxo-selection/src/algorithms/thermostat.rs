@@ -5,10 +5,10 @@ use crate::{
 use anyhow::{anyhow, Context};
 use cardano_utils::multisig_plan::MultisigPlan;
 use cardano_utils::network_id::NetworkInfo;
-use dcspark_core::tx::{TransactionAsset, UTxODetails};
+use dcspark_core::tx::{TransactionAsset, UTxODetails, UtxoPointer};
 use dcspark_core::{Address, Balance, Regulated, TokenId, UTxOStore, Value};
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub struct ThermostatAlgoConfig {
     num_accumulators: usize,
@@ -710,7 +710,8 @@ impl InputSelectionAlgorithm for Thermostat {
     }
 
     fn available_inputs(&self) -> Vec<Self::InputUtxo> {
-        todo!()
+        let selected_pointers: HashSet<UtxoPointer> = HashSet::from_iter(self.selected_inputs.iter().map(|input| input.pointer.clone()));
+        self.available_utxos.iter().map(|(_, utxo)| utxo.as_ref().clone()).filter(|utxo| !selected_pointers.contains(&utxo.pointer)).collect()
     }
 }
 

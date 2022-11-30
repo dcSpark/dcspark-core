@@ -625,7 +625,7 @@ impl InputSelectionAlgorithm for Thermostat {
         &mut self,
         available_inputs: Vec<Self::InputUtxo>,
     ) -> anyhow::Result<()> {
-        let mut utxos = self.available_utxos.thaw();
+        let mut utxos = UTxOStore::new().thaw();
         for input in available_inputs.into_iter() {
             utxos.insert(input)?
         }

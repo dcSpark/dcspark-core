@@ -53,6 +53,149 @@ pub enum TxEvent {
     },
 }
 
+fn handle_partial_parsed<
+    Algo: InputSelectionAlgorithm<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>,
+>(
+    algorithm: &mut Algo,
+    to: Vec<TxOutputIntent>,
+    from: Vec<TxOutputIntent>,
+    address_blockchain_balance: &mut HashMap<
+        dcspark_core::Address,
+        HashMap<TokenId, Balance<Regulated>>,
+    >,
+    address_computed_balance: &mut HashMap<
+        dcspark_core::Address,
+        HashMap<TokenId, Balance<Regulated>>,
+    >,
+    address_computed_utxos: &mut HashMap<dcspark_core::Address, Vec<UTxODetails>>,
+    number: usize,
+) -> anyhow::Result<()> {
+    let mut address_to_total_balance_used =
+        HashMap::<dcspark_core::Address, HashMap<TokenId, Value<Regulated>>>::new();
+    let mut token_id_to_asset = HashMap::<TokenId, TransactionAsset>::new();
+    for from_utxo in from.iter() {
+        let address = dcspark_core::Address::new(
+            from_utxo
+                .address
+                .as_ref()
+                .map(|addr| addr.to_bech32(None).unwrap())
+                .unwrap_or("N/A".to_string()),
+        );
+        let (balance, tokens) = csl_value_to_tokens(&from_utxo.amount)?;
+
+        let entry = address_to_total_balance_used
+            .entry(address.clone())
+            .or_default();
+        *entry.entry(TokenId::MAIN).or_default() += balance.clone();
+        for (token, asset) in tokens.iter() {
+            *entry.entry(token.clone()).or_default() += asset.quantity.clone();
+            token_id_to_asset.insert(
+                token.clone(),
+                TransactionAsset {
+                    policy_id: asset.policy_id.clone(),
+                    asset_name: asset.asset_name.clone(),
+                    fingerprint: asset.fingerprint.clone(),
+                    quantity: Default::default(),
+                },
+            );
+        }
+
+        let abb = address_blockchain_balance.entry(address).or_default();
+        *abb.entry(TokenId::MAIN).or_default() -= balance;
+        for (token, asset) in tokens.iter() {
+            *abb.entry(token.clone()).or_default() -= asset.quantity.clone();
+        }
+    }
+
+    for (address, balance) in address_to_total_balance_used {
+        let address_utxos = address_computed_utxos
+            .get(&address)
+            .cloned()
+            .unwrap_or_default();
+        algorithm.set_available_inputs(address_utxos.clone())?;
+        let mut output_asset_balance = HashMap::new();
+        for (token, balance) in balance.iter() {
+            if token != &TokenId::MAIN {
+                output_asset_balance
+                    .entry(token.clone())
+                    .or_insert(token_id_to_asset.get(&token.clone()).cloned().unwrap())
+                    .quantity += balance.clone();
+            }
+        }
+        let mut select_result = algorithm.select_inputs(
+            &mut DummyCmlFeeEstimate::<UTxODetails, UTxOBuilder>::new(),
+            InputOutputSetup {
+                input_balance: Default::default(),
+                input_asset_balance: Default::default(),
+                output_balance: balance.get(&TokenId::MAIN).cloned().unwrap_or_default(),
+                output_asset_balance: output_asset_balance.clone(),
+                fixed_inputs: vec![],
+                fixed_outputs: vec![UTxOBuilder {
+                    address: dcspark_core::Address::new("N/A"),
+                    value: balance.get(&TokenId::MAIN).cloned().unwrap_or_default(),
+                    assets: output_asset_balance
+                        .iter()
+                        .map(|(token, asset)| asset.clone())
+                        .collect(),
+                }],
+                change_address: Some(dcspark_core::Address::new("N/A")),
+            },
+        )?;
+
+        let address_utxos = algorithm.available_inputs();
+        let mut changes = select_result.changes.clone();
+
+        // recalculate balance and change utxos
+        address_computed_utxos.insert(address.clone(), address_utxos.clone());
+        let balance = address_computed_balance.entry(address.clone()).or_default();
+        balance.clear();
+        for utxo in address_utxos.iter() {
+            *balance.entry(TokenId::MAIN).or_default() += utxo.value.clone();
+            for token in utxo.assets.iter() {
+                *balance.entry(token.fingerprint.clone()).or_default() += token.quantity.clone();
+            }
+        }
+    }
+
+    for (output_index, to_utxo) in to.iter().enumerate() {
+        let address = dcspark_core::Address::new(
+            to_utxo
+                .address
+                .as_ref()
+                .map(|addr| addr.to_bech32(None).unwrap())
+                .unwrap_or("N/A".to_string()),
+        );
+        let (balance, tokens) = csl_value_to_tokens(&to_utxo.amount)?;
+
+        let computed_utxos = address_computed_utxos.entry(address.clone()).or_default();
+        computed_utxos.push(UTxODetails {
+            pointer: UtxoPointer {
+                transaction_id: TransactionId::new(number.to_string()),
+                output_index: OutputIndex::new(output_index as u64),
+            },
+            address: address.clone(),
+            value: balance.clone(),
+            assets: tokens.iter().map(|(token, asset)| asset.clone()).collect(),
+            metadata: Arc::new(Default::default()),
+        });
+
+        let computed_balance = address_computed_balance.entry(address.clone()).or_default();
+        *computed_balance.entry(TokenId::MAIN).or_default() += balance.clone();
+        for (token, asset) in tokens.iter() {
+            *computed_balance.entry(token.clone()).or_default() += asset.quantity.clone();
+        }
+
+        let abb = address_blockchain_balance
+            .entry(address.clone())
+            .or_default();
+        *abb.entry(TokenId::MAIN).or_default() += balance;
+        for (token, asset) in tokens.iter() {
+            *abb.entry(token.clone()).or_default() += asset.quantity.clone();
+        }
+    }
+    Ok(())
+}
+
 #[allow(unused)]
 pub fn run_algorithm_benchmark<
     Estimator: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>,
@@ -97,21 +240,6 @@ where
                                 .unwrap_or("N/A".to_string()),
                         );
                         addresses.push(address.clone());
-
-                        let (input, input_tokens) = csl_value_to_tokens(&from_utxo.amount)?;
-
-                        // update original blockchain balance
-                        let original_blockchain_balance = address_blockchain_balance
-                            .entry(address.clone())
-                            .or_default();
-                        *original_blockchain_balance
-                            .entry(TokenId::MAIN)
-                            .or_default() -= input.clone();
-                        for (token, asset) in input_tokens.iter() {
-                            *original_blockchain_balance
-                                .entry(token.clone())
-                                .or_default() -= asset.quantity.clone();
-                        }
                     }
                 }
 
@@ -155,19 +283,6 @@ where
                     };
 
                     let (output_balance, output_tokens) = csl_value_to_tokens(&to_utxo.amount)?;
-
-                    // update original blockchain balance
-                    let original_blockchain_balance = address_blockchain_balance
-                        .entry(address.clone())
-                        .or_default();
-                    *original_blockchain_balance
-                        .entry(TokenId::MAIN)
-                        .or_default() += output_balance.clone();
-                    for (token, asset) in output_tokens.iter() {
-                        *original_blockchain_balance
-                            .entry(token.clone())
-                            .or_default() += asset.quantity.clone();
-                    }
 
                     // changes are not fixed outputs
                     if is_change {
@@ -227,7 +342,22 @@ where
                         fixed_outputs: original_fixed_outputs.clone(),
                         change_address: change_address.clone(),
                     },
-                )?;
+                );
+
+                if let Err(res) = select_result {
+                    println!("Can't select inputs for that address using provided algo");
+                    handle_partial_parsed(
+                        &mut algorithm,
+                        to,
+                        from,
+                        &mut address_blockchain_balance,
+                        &mut address_computed_balance,
+                        &mut address_computed_utxos,
+                        number,
+                    )?;
+                    continue;
+                }
+                let mut select_result = select_result?;
 
                 // once the selection is performed we might need to balance change
 
@@ -256,8 +386,23 @@ where
                             fixed_outputs,
                             change_address: change_address.clone(),
                         },
-                    )?;
+                    );
 
+                    if let Err(res) = balance_change_result {
+                        println!("Can't balance change for that address using provided algo");
+                        handle_partial_parsed(
+                            &mut algorithm,
+                            to,
+                            from,
+                            &mut address_blockchain_balance,
+                            &mut address_computed_balance,
+                            &mut address_computed_utxos,
+                            number,
+                        )?;
+                        continue;
+                    }
+
+                    let mut balance_change_result = balance_change_result?;
                     assert!(balance_change_result.is_balanced());
 
                     current_utxos = balance_change_algo.available_inputs();
@@ -311,137 +456,70 @@ where
                             token.quantity.clone();
                     }
                 }
+
+                for from_utxo in from.iter() {
+                    if let Some(address) = &from_utxo.address {
+                        let address = dcspark_core::Address::new(
+                            from_utxo
+                                .address
+                                .as_ref()
+                                .map(|addr| addr.to_bech32(None).unwrap())
+                                .unwrap_or("N/A".to_string()),
+                        );
+
+                        let (input, input_tokens) = csl_value_to_tokens(&from_utxo.amount)?;
+
+                        // update original blockchain balance
+                        let original_blockchain_balance = address_blockchain_balance
+                            .entry(address.clone())
+                            .or_default();
+                        *original_blockchain_balance
+                            .entry(TokenId::MAIN)
+                            .or_default() -= input.clone();
+                        for (token, asset) in input_tokens.iter() {
+                            *original_blockchain_balance
+                                .entry(token.clone())
+                                .or_default() -= asset.quantity.clone();
+                        }
+                    }
+                }
+
+                for to_utxo in to.iter() {
+                    let address = if let Some(address) = &to_utxo.address {
+                        let address = dcspark_core::Address::new(
+                            address.to_bech32(None).unwrap_or("N/A".to_string()),
+                        );
+                        address
+                    } else {
+                        dcspark_core::Address::new("N/A")
+                    };
+
+                    let (output_balance, output_tokens) = csl_value_to_tokens(&to_utxo.amount)?;
+
+                    // update original blockchain balance
+                    let original_blockchain_balance = address_blockchain_balance
+                        .entry(address.clone())
+                        .or_default();
+                    *original_blockchain_balance
+                        .entry(TokenId::MAIN)
+                        .or_default() += output_balance.clone();
+                    for (token, asset) in output_tokens.iter() {
+                        *original_blockchain_balance
+                            .entry(token.clone())
+                            .or_default() += asset.quantity.clone();
+                    }
+                }
             }
             TxEvent::PartialParsed { to, from } => {
-                let mut address_to_total_balance_used =
-                    HashMap::<dcspark_core::Address, HashMap<TokenId, Value<Regulated>>>::new();
-                let mut token_id_to_asset = HashMap::<TokenId, TransactionAsset>::new();
-                for from_utxo in from.iter() {
-                    let address = dcspark_core::Address::new(
-                        from_utxo
-                            .address
-                            .as_ref()
-                            .map(|addr| addr.to_bech32(None).unwrap())
-                            .unwrap_or("N/A".to_string()),
-                    );
-                    let (balance, tokens) = csl_value_to_tokens(&from_utxo.amount)?;
-
-                    let entry = address_to_total_balance_used
-                        .entry(address.clone())
-                        .or_default();
-                    *entry.entry(TokenId::MAIN).or_default() += balance.clone();
-                    for (token, asset) in tokens.iter() {
-                        *entry.entry(token.clone()).or_default() += asset.quantity.clone();
-                        token_id_to_asset.insert(
-                            token.clone(),
-                            TransactionAsset {
-                                policy_id: asset.policy_id.clone(),
-                                asset_name: asset.asset_name.clone(),
-                                fingerprint: asset.fingerprint.clone(),
-                                quantity: Default::default(),
-                            },
-                        );
-                    }
-
-                    let abb = address_blockchain_balance.entry(address).or_default();
-                    *abb.entry(TokenId::MAIN).or_default() -= balance;
-                    for (token, asset) in tokens.iter() {
-                        *abb.entry(token.clone()).or_default() -= asset.quantity.clone();
-                    }
-                }
-
-                for (address, balance) in address_to_total_balance_used {
-                    let address_utxos = address_computed_utxos
-                        .get(&address)
-                        .cloned()
-                        .unwrap_or_default();
-                    algorithm.set_available_inputs(address_utxos.clone())?;
-                    let mut output_asset_balance = HashMap::new();
-                    for (token, balance) in balance.iter() {
-                        if token != &TokenId::MAIN {
-                            output_asset_balance
-                                .entry(token.clone())
-                                .or_insert(token_id_to_asset.get(&token.clone()).cloned().unwrap())
-                                .quantity += balance.clone();
-                        }
-                    }
-                    let mut select_result = algorithm.select_inputs(
-                        &mut DummyCmlFeeEstimate::<UTxODetails, UTxOBuilder>::new(),
-                        InputOutputSetup {
-                            input_balance: Default::default(),
-                            input_asset_balance: Default::default(),
-                            output_balance: balance
-                                .get(&TokenId::MAIN)
-                                .cloned()
-                                .unwrap_or_default(),
-                            output_asset_balance: output_asset_balance.clone(),
-                            fixed_inputs: vec![],
-                            fixed_outputs: vec![UTxOBuilder {
-                                address: dcspark_core::Address::new("N/A"),
-                                value: balance.get(&TokenId::MAIN).cloned().unwrap_or_default(),
-                                assets: output_asset_balance
-                                    .iter()
-                                    .map(|(token, asset)| asset.clone())
-                                    .collect(),
-                            }],
-                            change_address: Some(dcspark_core::Address::new("N/A")),
-                        },
-                    )?;
-
-                    let address_utxos = algorithm.available_inputs();
-                    let mut changes = select_result.changes.clone();
-
-                    // recalculate balance and change utxos
-                    address_computed_utxos.insert(address.clone(), address_utxos.clone());
-                    let balance = address_computed_balance.entry(address.clone()).or_default();
-                    balance.clear();
-                    for utxo in address_utxos.iter() {
-                        *balance.entry(TokenId::MAIN).or_default() += utxo.value.clone();
-                        for token in utxo.assets.iter() {
-                            *balance.entry(token.fingerprint.clone()).or_default() +=
-                                token.quantity.clone();
-                        }
-                    }
-                }
-
-                for (output_index, to_utxo) in to.iter().enumerate() {
-                    let address = dcspark_core::Address::new(
-                        to_utxo
-                            .address
-                            .as_ref()
-                            .map(|addr| addr.to_bech32(None).unwrap())
-                            .unwrap_or("N/A".to_string()),
-                    );
-                    let (balance, tokens) = csl_value_to_tokens(&to_utxo.amount)?;
-
-                    let computed_utxos = address_computed_utxos.entry(address.clone()).or_default();
-                    computed_utxos.push(UTxODetails {
-                        pointer: UtxoPointer {
-                            transaction_id: TransactionId::new(number.to_string()),
-                            output_index: OutputIndex::new(output_index as u64),
-                        },
-                        address: address.clone(),
-                        value: balance.clone(),
-                        assets: tokens.iter().map(|(token, asset)| asset.clone()).collect(),
-                        metadata: Arc::new(Default::default()),
-                    });
-
-                    let computed_balance =
-                        address_computed_balance.entry(address.clone()).or_default();
-                    *computed_balance.entry(TokenId::MAIN).or_default() += balance.clone();
-                    for (token, asset) in tokens.iter() {
-                        *computed_balance.entry(token.clone()).or_default() +=
-                            asset.quantity.clone();
-                    }
-
-                    let abb = address_blockchain_balance
-                        .entry(address.clone())
-                        .or_default();
-                    *abb.entry(TokenId::MAIN).or_default() += balance;
-                    for (token, asset) in tokens.iter() {
-                        *abb.entry(token.clone()).or_default() += asset.quantity.clone();
-                    }
-                }
+                handle_partial_parsed(
+                    &mut algorithm,
+                    to,
+                    from,
+                    &mut address_blockchain_balance,
+                    &mut address_computed_balance,
+                    &mut address_computed_utxos,
+                    number,
+                )?;
             }
             TxEvent::Unparsed { .. } => {}
         }

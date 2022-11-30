@@ -18,6 +18,18 @@ pub struct ThermostatAlgoConfig {
     main_token: TokenId,
 }
 
+impl Default for ThermostatAlgoConfig {
+    fn default() -> Self {
+        ThermostatAlgoConfig {
+            num_accumulators: 20,
+            num_accumulators_assets: 20,
+            native_utxo_thermostat_min: Value::<Regulated>::from(50_000_000),
+            native_utxo_thermostat_max: Value::<Regulated>::from(200_000_000),
+            main_token: TokenId::MAIN,
+        }
+    }
+}
+
 pub struct Thermostat {
     optional_change_address: Option<Address>,
     changes: HashMap<TokenId, UTxOBuilder>,

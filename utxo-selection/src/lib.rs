@@ -1,6 +1,6 @@
 mod algorithm;
 pub mod algorithms;
-mod benchmark;
+pub mod benchmark;
 mod common;
 mod csl;
 mod estimate;

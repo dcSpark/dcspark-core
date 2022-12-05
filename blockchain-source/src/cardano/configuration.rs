@@ -4,6 +4,8 @@ use dcspark_core::{BlockId, SlotNumber};
 use std::borrow::Cow;
 
 #[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[serde(deny_unknown_fields)]
 pub struct NetworkConfiguration {
     pub chain_info: ChainInfo,
     pub relay: (Cow<'static, str>, u16),
@@ -18,6 +20,7 @@ pub enum ChainInfo {
     Mainnet,
     Preprod,
     Preview,
+    Testnet,
     Custom { protocol_magic: u64, network_id: u8 },
 }
 
@@ -26,6 +29,7 @@ impl From<ChainInfo> for cardano_sdk::chaininfo::ChainInfo {
         match info {
             ChainInfo::Mainnet => cardano_sdk::chaininfo::ChainInfo::MAINNET,
             ChainInfo::Preprod => cardano_sdk::chaininfo::ChainInfo::PREPROD,
+            ChainInfo::Testnet => cardano_sdk::chaininfo::ChainInfo::TESTNET,
             ChainInfo::Preview => cardano_sdk::chaininfo::ChainInfo {
                 protocol_magic: Magic(2),
                 network_id: 0b0000,
@@ -61,6 +65,29 @@ impl NetworkConfiguration {
                 "89d9b5a5b8ddc8d7e5a6795e9774d97faf1efea59b2caf7eaf9f8c5b32059df4",
             ),
             shelley_era_config: Era::SHELLEY_MAINNET,
+        }
+    }
+
+    pub fn testnet() -> Self {
+        Self {
+            chain_info: ChainInfo::Testnet,
+            relay: (
+                Cow::Borrowed("relays-new.cardano-testnet.iohkdev.io."),
+                3001,
+            ),
+            from: Point::BlockHeader {
+                slot_nb: SlotNumber::new(1598400),
+                hash: BlockId::new(
+                    "02b1c561715da9e540411123a6135ee319b02f60b9a11a603d3305556c04329f",
+                ),
+            },
+            genesis_parent: BlockId::new(
+                "96fceff972c2c06bd3bb5243c39215333be6d56aaf4823073dca31afe5038471",
+            ),
+            genesis: BlockId::new(
+                "8f8602837f7c6f8b8867dd1cbc1842cf51a27eaed2c70ef48325d00f8efb320f",
+            ),
+            shelley_era_config: Era::SHELLEY_TESTNET,
         }
     }
 

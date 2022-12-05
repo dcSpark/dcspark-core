@@ -17,6 +17,13 @@ impl Era {
         slot_length: 1,
     };
 
+    pub const SHELLEY_TESTNET: Self = Self {
+        first_slot: 1598400,
+        start_epoch: 74,
+        known_time: 1595967616,
+        slot_length: 1,
+    };
+
     pub const SHELLEY_PREPROD: Self = Self {
         first_slot: 86400,
         start_epoch: 0,

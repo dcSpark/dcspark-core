@@ -78,11 +78,6 @@ fn main() -> Result<(), anyhow::Error> {
         &StakeCredential::from_keyhash(&staking_key.to_raw_key().hash()),
     );
 
-    // let enterprise = EnterpriseAddress::new(
-    //     opt.network as u8,
-    //     &StakeCredential::from_keyhash(&spending.to_raw_key().hash()),
-    // );
-
     println!(
         "checking backend for address:\n {}",
         base_address.to_address().to_bech32(None).unwrap()
@@ -105,10 +100,7 @@ fn main() -> Result<(), anyhow::Error> {
         .post(format!("{carp_base_url}{}", "/address/used"))
         .header(CONTENT_TYPE, "application/json")
         .body(miniserde::json::to_string(&AddressUsed {
-            addresses: vec![
-                base_address.to_address().to_bech32(None).unwrap(),
-                // enterprise.to_address().to_bech32(None).unwrap(),
-            ],
+            addresses: vec![base_address.to_address().to_bech32(None).unwrap()],
             until_block: latest.block.hash,
         }))
         .send()

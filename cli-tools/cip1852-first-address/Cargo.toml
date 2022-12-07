@@ -1,5 +1,5 @@
 [package]
-name = "derive-master-public-key"
+name = "cip1852-first-address"
 version = "0.1.0"
 edition = "2021"
 

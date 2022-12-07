@@ -1,0 +1,21 @@
+[package]
+name = "utxo-selection-benchmark"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+entity = { git = "https://github.com/dcSpark/carp.git", branch = "egostkin/generate-benchmark-data" }
+dcspark-core = { path = "../core" }
+
+anyhow = "1.0.53"
+serde = {version = "1.0.144", features = ["derive", "rc"]}
+tokio = { version = "1.16.1", features = ["full"] }
+hex = "0.4.3"
+tracing-subscriber = "0.3.9"
+tracing = "0.1.31"
+serde_json = "1.0.79"
+serde_yaml = "0.9.13"
+clap = { version = "3.1", features = ["derive"] }
+cardano-multiplatform-lib = "3.1.1"

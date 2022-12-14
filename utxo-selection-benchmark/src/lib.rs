@@ -1,7 +1,7 @@
-pub mod utils;
-pub mod tx_event;
-pub mod mapper;
 pub mod bench;
+pub mod mapper;
+pub mod tx_event;
+pub mod utils;
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right

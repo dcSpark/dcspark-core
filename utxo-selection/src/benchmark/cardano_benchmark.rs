@@ -294,7 +294,7 @@ where
                         address,
                         output_balance.clone(),
                         output_tokens.values().into_iter().cloned().collect(),
-                    )?;
+                    );
                     original_fixed_outputs.push(fixed_output);
 
                     total_output_balance += output_balance;

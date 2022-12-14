@@ -347,7 +347,7 @@ impl Thermostat {
                 .as_ref()
                 .ok_or_else(|| anyhow!("Change address required"))?;
 
-            let default = UTxOBuilder::new(address.clone(), Value::zero(), vec![])?;
+            let default = UTxOBuilder::new(address.clone(), Value::zero(), vec![]);
 
             {
                 // setting the entry in a scope so it does not prevent us from
@@ -434,7 +434,7 @@ impl Thermostat {
                 .as_ref()
                 .ok_or_else(|| anyhow!("Change address required"))?;
 
-            let default = UTxOBuilder::new(address.clone(), Value::zero(), vec![])?;
+            let default = UTxOBuilder::new(address.clone(), Value::zero(), vec![]);
 
             if let Entry::Vacant(entry) = self.changes.entry(self.config.main_token.clone()) {
                 estimate.add_output(default.clone())?;
@@ -448,7 +448,7 @@ impl Thermostat {
                 .as_ref()
                 .ok_or_else(|| anyhow!("Change address required"))?;
 
-            let default = UTxOBuilder::new(address.clone(), Value::zero(), vec![])?;
+            let default = UTxOBuilder::new(address.clone(), Value::zero(), vec![]);
 
             let entry = match self.changes.entry(self.config.main_token.clone()) {
                 Entry::Vacant(entry) => {
@@ -710,8 +710,16 @@ impl InputSelectionAlgorithm for Thermostat {
     }
 
     fn available_inputs(&self) -> Vec<Self::InputUtxo> {
-        let selected_pointers: HashSet<UtxoPointer> = HashSet::from_iter(self.selected_inputs.iter().map(|input| input.pointer.clone()));
-        self.available_utxos.iter().map(|(_, utxo)| utxo.as_ref().clone()).filter(|utxo| !selected_pointers.contains(&utxo.pointer)).collect()
+        let selected_pointers: HashSet<UtxoPointer> = HashSet::from_iter(
+            self.selected_inputs
+                .iter()
+                .map(|input| input.pointer.clone()),
+        );
+        self.available_utxos
+            .iter()
+            .map(|(_, utxo)| utxo.as_ref().clone())
+            .filter(|utxo| !selected_pointers.contains(&utxo.pointer))
+            .collect()
     }
 }
 
@@ -890,7 +898,7 @@ mod tests {
         let assets = utxo_asset_sample!("My Token", "1_000_000");
 
         estimator.add_protocol_magic("unittest.cardano-evm.c1");
-        let output = UTxOBuilder::new(address, value, assets).unwrap();
+        let output = UTxOBuilder::new(address, value, assets);
         let setup = InputOutputSetup::<UTxODetails, UTxOBuilder> {
             input_balance: Default::default(),
             input_asset_balance: Default::default(),
@@ -982,7 +990,7 @@ mod tests {
         let (mut thermostat, mut estimator) = selection();
         estimator.add_protocol_magic("unittest.cardano-evm.c1");
 
-        let output = UTxOBuilder::new(address, value, assets).unwrap();
+        let output = UTxOBuilder::new(address, value, assets);
         let setup = InputOutputSetup::<UTxODetails, UTxOBuilder> {
             input_balance: Default::default(),
             input_asset_balance: Default::default(),
@@ -1067,7 +1075,7 @@ mod tests {
         let (mut thermostat, mut estimator) = selection();
         estimator.add_protocol_magic("unittest.cardano-evm.c1");
 
-        let output = UTxOBuilder::new(address, value, assets).unwrap();
+        let output = UTxOBuilder::new(address, value, assets);
         let setup = InputOutputSetup::<UTxODetails, UTxOBuilder> {
             input_balance: Default::default(),
             input_asset_balance: Default::default(),
@@ -1191,7 +1199,7 @@ mod tests {
         let (mut thermostat, mut estimator) = selection();
         estimator.add_protocol_magic("unittest.cardano-evm.c1");
 
-        let output = UTxOBuilder::new(address, value, assets).unwrap();
+        let output = UTxOBuilder::new(address, value, assets);
         let setup = InputOutputSetup::<UTxODetails, UTxOBuilder> {
             input_balance: Default::default(),
             input_asset_balance: Default::default(),
@@ -1279,7 +1287,7 @@ mod tests {
         let (mut thermostat, mut estimator) = selection();
         estimator.add_protocol_magic("unittest.cardano-evm.c1");
 
-        let output = UTxOBuilder::new(address, value, assets).unwrap();
+        let output = UTxOBuilder::new(address, value, assets);
         let setup = InputOutputSetup::<UTxODetails, UTxOBuilder> {
             input_balance: Default::default(),
             input_asset_balance: Default::default(),
@@ -1363,7 +1371,7 @@ mod tests {
         let (mut thermostat, mut estimator) = selection();
         estimator.add_protocol_magic("unittest.cardano-evm.c1");
 
-        let output = UTxOBuilder::new(address, value, assets).unwrap();
+        let output = UTxOBuilder::new(address, value, assets);
         let setup = InputOutputSetup::<UTxODetails, UTxOBuilder> {
             input_balance: Default::default(),
             input_asset_balance: Default::default(),
@@ -1427,8 +1435,7 @@ mod tests {
             output_address,
             Value::<cardano::Ada>::from(3).to_lovelace().to_regulated(),
             output_assets.clone(),
-        )
-        .unwrap();
+        );
         let (mut thermostat, mut estimator) = selection();
         estimator.add_protocol_magic("unittest.cardano-evm.c1");
 
@@ -1472,8 +1479,7 @@ mod tests {
             output_address,
             Value::<cardano::Ada>::from(3).to_lovelace().to_regulated(),
             output_assets.clone(),
-        )
-        .unwrap();
+        );
 
         let (mut thermostat, mut estimator) = selection();
         estimator.add_protocol_magic("unittest.cardano-evm.c1");

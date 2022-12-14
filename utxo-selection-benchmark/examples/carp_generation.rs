@@ -1,8 +1,5 @@
 use std::path::PathBuf;
 
-use utxo_selection_benchmark::mapper::DataMapper;
-use utxo_selection_benchmark::tx_event::{TxAsset, TxEvent, TxOutput};
-use utxo_selection_benchmark::utils::{dump_hashmap_to_file, dump_hashset_to_file};
 use anyhow::{anyhow, Context};
 use cardano_multiplatform_lib::address::StakeCredential;
 use cardano_multiplatform_lib::crypto::TransactionHash;
@@ -22,6 +19,9 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use tracing_subscriber::prelude::*;
+use utxo_selection_benchmark::mapper::DataMapper;
+use utxo_selection_benchmark::tx_event::{TxAsset, TxEvent, TxOutput};
+use utxo_selection_benchmark::utils::{dump_hashmap_to_file, dump_hashset_to_file};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -356,6 +356,7 @@ fn dump_unparsed_transactions_to_file(
     }
     Ok(())
 }
+
 fn clean_events(
     events_output_path: PathBuf,
     cleaned_events_output_path: PathBuf,
@@ -489,7 +490,7 @@ fn get_input_intents(
     let has_banned_addresses = parsed_inputs.iter().any(|input| {
         input.address.is_none()
             || (input.address.is_some()
-            && banned_addresses.contains(&input.address.clone().unwrap()))
+                && banned_addresses.contains(&input.address.clone().unwrap()))
     });
 
     Ok((
@@ -599,7 +600,7 @@ mod tests {
             101, 106, 250, 127, 137, 49, 211, 112, 238, 220, 189, 229, 84, 138, 171, 84, 242, 131,
             186, 7, 51, 239, 48, 123, 135, 235, 45, 50, 19, 86, 67, 142,
         ])
-            .unwrap();
+        .unwrap();
         println!("{}", tx_hash.to_hex());
     }
 }

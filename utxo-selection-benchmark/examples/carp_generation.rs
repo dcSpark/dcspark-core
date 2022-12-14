@@ -356,6 +356,7 @@ fn dump_unparsed_transactions_to_file(
     }
     Ok(())
 }
+
 fn clean_events(
     events_output_path: PathBuf,
     cleaned_events_output_path: PathBuf,

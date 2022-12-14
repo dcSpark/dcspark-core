@@ -106,7 +106,6 @@ async fn _main() -> anyhow::Result<()> {
             }
             Err(err) => {
                 tracing::error!("can't parse address: {:?}, addr={:?}", err, address);
-                return Err(anyhow!("can't parse address: {:?}, addr={:?}", err, address));
             }
         }
     }

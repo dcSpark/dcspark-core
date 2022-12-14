@@ -72,7 +72,7 @@ async fn _main() -> anyhow::Result<()> {
     let mut unparsed_addresses_file = if config.unparsed_transaction_addresses.exists() && config.unparsed_transaction_addresses.is_file() {
         File::open(config.unparsed_transaction_addresses.clone())?
     } else {
-        return Err(anyhow!("can't open input file: {:?}", config.events_path.clone()))
+        return Err(anyhow!("can't open input file: {:?}", config.unparsed_transaction_addresses.clone()))
     };
 
     let mut stake_address_to_num = DataMapper::<StakeCredential>::load_from_file(config.staking_creds_mapping)?;

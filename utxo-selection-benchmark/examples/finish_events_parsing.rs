@@ -75,10 +75,19 @@ async fn _main() -> anyhow::Result<()> {
         return Err(anyhow!("can't open input file: {:?}", config.unparsed_transaction_addresses.clone()))
     };
 
+    tracing::info!("loading mappings");
+
     let mut stake_address_to_num = DataMapper::<StakeCredential>::load_from_file(config.staking_creds_mapping)?;
+    tracing::info!("stake addresses loaded");
+
     let mut payment_address_to_num = DataMapper::<StakeCredential>::load_from_file(config.payment_creds_mapping)?;
-    let mut address_to_mapping: HashMap<String, (u64, Option<u64>)> = read_hashmap_from_file(config.address_to_mapping)?;
+    tracing::info!("payment addresses loaded");
+
     let mut banned_addresses: HashSet<(u64, Option<u64>)> = read_hashset_from_file(config.banned_addresses)?;
+    tracing::info!("banned addresses loaded");
+
+    let mut address_to_mapping: HashMap<String, (u64, Option<u64>)> = read_hashmap_from_file(config.address_to_mapping)?;
+    tracing::info!("address mapping loaded");
 
     tracing::info!("successfully loaded mappings");
 

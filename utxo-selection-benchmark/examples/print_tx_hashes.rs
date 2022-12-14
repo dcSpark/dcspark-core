@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
+use std::str::FromStr;
 use anyhow::anyhow;
 use serde::Deserialize;
 use clap::Parser;
@@ -39,11 +40,15 @@ async fn _main() -> anyhow::Result<()> {
         return Err(anyhow!("can't open input file: {:?}", file_path.clone()))
     };
 
-    let unparsed_addresses_file_lines = BufReader::new(unparsed_txs_file).lines();
+    let mut unparsed_addresses_file_lines = BufReader::new(unparsed_txs_file).lines();
+    let count = u64::from_str(unparsed_addresses_file_lines.next().unwrap()?.as_str())?;
+    let mut seen = 0;
     for line in unparsed_addresses_file_lines {
         let tx: TransactionModel = serde_json::from_str(line?.as_str())?;
         println!("hash: {}", hex::encode(tx.hash.clone()));
+        seen += 1;
     }
 
+    assert_eq!(seen, count);
     Ok(())
 }

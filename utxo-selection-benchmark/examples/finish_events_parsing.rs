@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use anyhow::{anyhow, Context};
+use clap::Parser;
 use cardano_multiplatform_lib::address::{Address, StakeCredential};
 use cardano_multiplatform_lib::error::JsError;
 use tracing_subscriber::layer::SubscriberExt;
@@ -10,6 +11,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use utxo_selection_benchmark::mapper::DataMapper;
 use utxo_selection_benchmark::tx_event::{TxEvent, TxOutput};
 use utxo_selection_benchmark::utils::{dump_hashmap_to_file, dump_hashset_to_file, read_hashmap_from_file, read_hashset_from_file};
+use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -84,7 +86,7 @@ async fn _main() -> anyhow::Result<()> {
     for line in unparsed_addresses_file_lines {
         let address = line?;
         match cardano_multiplatform_lib::address::Address::from_bech32(address.as_str()) {
-            Ok(addr) => match addr.payment_cred() {
+            Ok(address) => match address.payment_cred() {
                 None => {
                     // this is byron output
                 }

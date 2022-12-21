@@ -200,9 +200,12 @@ where
                 let mut select_result = match select_result {
                     Ok(r) => r,
                     Err(err) => {
+                        let computed_balance = staking_key_balance_computed.get(&stake_key).map(|map| map.get(&TokenId::MAIN)).flatten();
+                        let actual_balance = staking_key_balance_actual.get(&stake_key).map(|map| map.get(&TokenId::MAIN)).flatten();
+                        let tried_to_send = fixed_outputs;
                         tracing::debug!(
-                            "Can't select inputs for that address using provided algo {:?}, tx_number: {:?}",
-                            err, tx_number,
+                            "Can't select inputs for {} address using provided algo, actual: {:?}, computed: {:?}, outputs: {:?}, tx_number: {}, err: {:?}",
+                            stake_key, actual_balance, computed_balance, tried_to_send, tx_number, err
                         );
                         insolvent_staking_keys.insert(stake_key);
 

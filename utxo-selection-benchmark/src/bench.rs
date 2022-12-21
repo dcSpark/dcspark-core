@@ -217,24 +217,6 @@ where
                     }
                 };
 
-                let mut computed_available_utxos = algorithm.available_inputs();
-                let mut changes = select_result.changes.clone();
-                let mut inputs_value = dcspark_core::Value::<Regulated>::zero();
-                for change in select_result.changes.iter() {
-                    inputs_value += &change.value;
-                }
-                for change in select_result.fixed_outputs.iter() {
-                    inputs_value += &change.value;
-                }
-                inputs_value += &select_result.fee;
-                for change in select_result.fixed_inputs.iter() {
-                    inputs_value -= &change.value;
-                }
-                for change in select_result.chosen_inputs.iter() {
-                    inputs_value -= &change.value;
-                }
-                assert_eq!(inputs_value, Value::zero());
-
                 if !select_result.is_balanced() && allow_balance_change {
                     balance_change_algo.set_available_inputs(computed_available_utxos.clone())?;
 
@@ -321,6 +303,24 @@ where
 
                     continue;
                 }
+
+                let mut computed_available_utxos = algorithm.available_inputs();
+                let mut changes = select_result.changes.clone();
+                let mut inputs_value = dcspark_core::Value::<Regulated>::zero();
+                for change in select_result.changes.iter() {
+                    inputs_value += &change.value;
+                }
+                for change in select_result.fixed_outputs.iter() {
+                    inputs_value += &change.value;
+                }
+                inputs_value += &select_result.fee;
+                for change in select_result.fixed_inputs.iter() {
+                    inputs_value -= &change.value;
+                }
+                for change in select_result.chosen_inputs.iter() {
+                    inputs_value -= &change.value;
+                }
+                assert_eq!(inputs_value, Value::zero());
 
                 recount_available_inputs(
                     computed_available_utxos,

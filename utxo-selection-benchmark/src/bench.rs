@@ -337,6 +337,9 @@ where
                 }
                 assert_eq!(inputs_value, Value::zero());
 
+                tracing::info!("current balance: {:?}", staking_key_balance_computed.get(&stake_key));
+                tracing::info!("actual balance: {:?}", staking_key_balance_actual.get(&stake_key));
+
                 tracing::info!("inputs: {:?}", selected_inputs);
                 recount_available_inputs(
                     selected_inputs,

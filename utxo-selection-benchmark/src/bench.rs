@@ -153,7 +153,6 @@ where
                     }
                 }
 
-                let mut available_utxos: Vec<UTxODetails> = vec![];
                 let computed_utxos = address_computed_utxos_by_stake_key.get(&stake_key);
                 let computed_utxos = match computed_utxos {
                     None => {
@@ -226,6 +225,7 @@ where
 
                 let mut computed_available_utxos = algorithm.available_inputs();
                 let mut changes = select_result.changes.clone();
+                let mut selected_inputs = select_result.chosen_inputs.clone();
 
                 if !select_result.is_balanced() && allow_balance_change {
                     balance_change_algo.set_available_inputs(computed_available_utxos.clone())?;
@@ -295,7 +295,8 @@ where
 
                     computed_available_utxos = balance_change_algo.available_inputs();
                     // changes from first stage + changes from balance + original fixed outputs = all outputs
-                    changes.append(&mut balance_change_result.changes)
+                    changes.append(&mut balance_change_result.changes);
+                    selected_inputs.append(&mut balance_change_result.chosen_inputs);
                 } else if !select_result.is_balanced() {
                     tracing::debug!("Can't balance inputs for that address using provided algo, tx_number: {:?}", tx_number);
                     insolvent_staking_keys.insert(stake_key);
@@ -331,7 +332,7 @@ where
                 assert_eq!(inputs_value, Value::zero());
 
                 recount_available_inputs(
-                    computed_available_utxos,
+                    selected_inputs,
                     stake_key,
                     &mut address_computed_utxos_by_stake_key,
                     &mut staking_key_balance_computed,
@@ -694,7 +695,7 @@ fn add_untouched_outputs_to_stake_keys(
 }
 
 fn recount_available_inputs(
-    computed_available_utxos: Vec<UTxODetails>,
+    chosen_inputs: Vec<UTxODetails>,
     stake_key: u64,
     address_computed_utxos_by_stake_key: &mut HashMap<u64, HashMap<u64, Vec<UTxODetails>>>,
     staking_key_balance_computed: &mut HashMap<u64, HashMap<TokenId, Balance<Regulated>>>,
@@ -702,26 +703,21 @@ fn recount_available_inputs(
     let current_stake_key_utxos = address_computed_utxos_by_stake_key
         .entry(stake_key)
         .or_default();
-    current_stake_key_utxos.clear();
     let current_token_balance = staking_key_balance_computed
         .entry(stake_key.clone())
         .or_default();
-    current_token_balance.clear();
 
-    for available_input in computed_available_utxos.into_iter() {
-        let (payment, _) = pair_from_address(available_input.address.clone()).unwrap();
+    for chosen_input in chosen_inputs.into_iter() {
+        let (payment, _) = pair_from_address(chosen_input.address.clone()).unwrap();
 
-        *current_token_balance.entry(TokenId::MAIN).or_default() += &available_input.value;
-        for token in available_input.assets.iter() {
+        *current_token_balance.entry(TokenId::MAIN).or_default() -= &chosen_input.value;
+        for token in chosen_input.assets.iter() {
             *current_token_balance
                 .entry(token.fingerprint.clone())
                 .or_default() += &token.quantity;
         }
 
-        current_stake_key_utxos
-            .entry(payment)
-            .or_default()
-            .push(available_input);
+        current_stake_key_utxos.entry(payment).or_default().retain_mut(|elem| elem.pointer != chosen_input.pointer);
     }
 }
 

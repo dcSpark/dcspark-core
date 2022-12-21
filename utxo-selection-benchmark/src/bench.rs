@@ -337,6 +337,7 @@ where
                 }
                 assert_eq!(inputs_value, Value::zero());
 
+                println!("inputs: {:?}", selected_inputs);
                 recount_available_inputs(
                     selected_inputs,
                     stake_key,
@@ -348,6 +349,7 @@ where
                     .into_iter()
                     .chain(changes.into_iter())
                     .collect();
+                println!("outputs: {:?}", outputs);
                 add_new_selected_outputs_to_stake_keys(
                     tx_number,
                     outputs,

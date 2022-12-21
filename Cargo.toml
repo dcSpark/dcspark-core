@@ -1,11 +1,14 @@
 [workspace]
 members = [
     "blockchain-source",
+    "cardano-utils",
     "core",
     "deps",
     "fraos",
     "indexed-log-map",
     "multiverse",
+    "utxo-selection",
+    "utxo-selection-benchmark",
 ]
 
 [workspace.metadata.release]

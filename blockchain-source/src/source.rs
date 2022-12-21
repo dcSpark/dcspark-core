@@ -1,7 +1,8 @@
 use crate::cardano::Point;
 use anyhow::Result;
 use async_trait::async_trait;
-use dcspark_core::{BlockId, BlockNumber, TransactionId};
+use dcspark_core::tx::TransactionId;
+use dcspark_core::{BlockId, BlockNumber};
 
 /// Trait that defines how a we are to handle a source of event.
 ///

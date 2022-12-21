@@ -226,6 +226,7 @@ where
                 for change in select_result.fixed_outputs.iter() {
                     inputs_value += &change.value;
                 }
+                inputs_value += &select_result.fee;
                 for change in select_result.fixed_inputs.iter() {
                     inputs_value -= &change.value;
                 }

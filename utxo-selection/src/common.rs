@@ -60,7 +60,7 @@ impl<InputUtxo: Clone, OutputUtxo: Clone> InputSelectionResult<InputUtxo, Output
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct UTxOBuilder {
     pub address: Address,
     pub value: Value<Regulated>,

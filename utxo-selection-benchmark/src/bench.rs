@@ -345,6 +345,8 @@ where
                     &mut staking_key_balance_computed,
                 );
 
+                println!("current balance: {:?}", staking_key_balance_computed.get(&stake_key));
+
                 let outputs: Vec<_> = fixed_outputs
                     .into_iter()
                     .chain(changes.into_iter())
@@ -358,6 +360,7 @@ where
                     &insolvent_staking_keys,
                     &discarded_staking_keys,
                 );
+                println!("current balance: {:?}", staking_key_balance_computed.get(&stake_key));
 
                 add_to_actual_balance(
                     &to,
@@ -722,13 +725,15 @@ fn recount_available_inputs(
         .or_default();
 
     for chosen_input in chosen_inputs.into_iter() {
-        let (payment, _) = pair_from_address(chosen_input.address.clone()).unwrap();
-
+        let (payment, staking) = pair_from_address(chosen_input.address.clone()).unwrap();
+        if staking.is_none() || staking.unwrap() != stake_key {
+            continue;
+        }
         *current_token_balance.entry(TokenId::MAIN).or_default() -= &chosen_input.value;
         for token in chosen_input.assets.iter() {
             *current_token_balance
                 .entry(token.fingerprint.clone())
-                .or_default() += &token.quantity;
+                .or_default() -= &token.quantity;
         }
 
         current_stake_key_utxos.entry(payment).or_default().retain_mut(|elem| elem.pointer != chosen_input.pointer);

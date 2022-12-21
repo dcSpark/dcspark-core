@@ -615,6 +615,16 @@ impl Thermostat {
         self.available_utxos = available_inputs;
         Ok(())
     }
+
+    pub fn reset(&mut self) {
+        self.optional_change_address = None;
+        self.changes = HashMap::new();
+        self.extra_changes = vec![];
+        self.selected_inputs = vec![];
+        self.selected_inputs_value = Value::zero();
+        self.balance = Balance::Balanced;
+        self.asset_balance = HashMap::new();
+    }
 }
 
 impl InputSelectionAlgorithm for Thermostat {
@@ -630,6 +640,7 @@ impl InputSelectionAlgorithm for Thermostat {
             utxos.insert(input)?
         }
         self.available_utxos = utxos.freeze();
+        self.reset();
         Ok(())
     }
 
@@ -640,6 +651,7 @@ impl InputSelectionAlgorithm for Thermostat {
         estimator: &mut Estimate,
         input_output_setup: InputOutputSetup<Self::InputUtxo, Self::OutputUtxo>,
     ) -> anyhow::Result<InputSelectionResult<Self::InputUtxo, Self::OutputUtxo>> {
+        self.reset();
         for (token, asset) in input_output_setup.input_asset_balance.iter() {
             *self
                 .asset_balance

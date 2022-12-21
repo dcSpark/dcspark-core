@@ -35,6 +35,7 @@ pub struct Thermostat {
     changes: HashMap<TokenId, UTxOBuilder>,
     extra_changes: Vec<UTxOBuilder>,
 
+    outputs: Vec<UTxOBuilder>,
     selected_inputs: Vec<UTxODetails>,
     selected_inputs_value: Value<Regulated>,
 
@@ -60,7 +61,6 @@ pub struct ThermostatFeeEstimator {
     outputs: Vec<UTxOBuilder>,
     inputs: Vec<UTxODetails>,
 
-    balance: Balance<Regulated>,
     asset_balance: HashMap<TokenId, Balance<Regulated>>,
 }
 
@@ -114,7 +114,6 @@ impl ThermostatFeeEstimator {
 
             outputs: Vec::new(),
             inputs: Vec::new(),
-            balance: Balance::Balanced,
             asset_balance: HashMap::new(),
         }
     }
@@ -136,6 +135,14 @@ impl TransactionFeeEstimator for ThermostatFeeEstimator {
     type InputUtxo = UTxODetails;
     type OutputUtxo = UTxOBuilder;
 
+    fn count_outputs(&self) -> usize {
+        self.outputs.len()
+    }
+
+    fn count_inputs(&self) -> usize {
+        self.inputs.len()
+    }
+
     fn min_required_fee(&self) -> anyhow::Result<Value<Regulated>> {
         let num_outputs = self.outputs.len();
         let num_inputs = self.inputs.len();
@@ -150,8 +157,6 @@ impl TransactionFeeEstimator for ThermostatFeeEstimator {
     }
 
     fn add_input(&mut self, input: Self::InputUtxo) -> anyhow::Result<()> {
-        self.balance += &input.value;
-
         for asset in input.assets.iter() {
             let balance = self
                 .asset_balance
@@ -185,7 +190,6 @@ impl TransactionFeeEstimator for ThermostatFeeEstimator {
     }
 
     fn add_output(&mut self, output: Self::OutputUtxo) -> anyhow::Result<()> {
-        self.balance -= &output.value;
         for asset in output.assets.iter() {
             let balance = self
                 .asset_balance
@@ -207,6 +211,7 @@ impl Thermostat {
             changes: HashMap::new(),
             extra_changes: vec![],
 
+            outputs: vec![],
             selected_inputs: Vec::new(),
 
             selected_inputs_value: Value::zero(),
@@ -230,6 +235,8 @@ impl Thermostat {
             *balance += &asset.quantity;
         }
 
+        // current size update
+
         self.selected_inputs.push(input);
     }
 
@@ -243,6 +250,12 @@ impl Thermostat {
     }
 
     fn current_balance_of(&self, asset: &TokenId) -> Balance<Regulated> {
+        debug_assert_ne!(
+            asset,
+            &TokenId::MAIN,
+            "The {asset} can only be used with the current_balance function"
+        );
+
         self.asset_balance
             .get(asset)
             .cloned()
@@ -490,9 +503,15 @@ impl Thermostat {
                         asset.quantity -= quantity.clone();
 
                         let fee_for_output = estimate.fee_for_output(&new)?;
-                        let value = &new.value - &fee_for_output;
-                        new.value = (value / 2).truncate();
-                        change.value -= &new.value;
+                        let fee_new = (&fee_for_output / 2).truncate();
+                        let value = (&new.value / 2).truncate();
+
+                        if value <= fee_new || value <= fee_for_output {
+                            continue;
+                        }
+
+                        new.value = &value - &fee_new;
+                        change.value = &change.value - &new.value - &fee_for_output;
                         self.balance += &fee_for_output;
 
                         estimate.add_output(new.clone())?;
@@ -508,9 +527,16 @@ impl Thermostat {
                     let fee_for_output = estimate.fee_for_output(&new)?;
                     let current = &change.value - &fee_for_output;
 
+                    let fee_new = (&fee_for_output / 2).truncate();
+                    let value = (&new.value / 2).truncate();
+
+                    if value <= fee_new || value <= fee_for_output {
+                        continue;
+                    }
+
                     if current > pivot {
-                        new.value = (&current / 2).truncate();
-                        change.value -= &new.value;
+                        new.value = &value - &fee_new;
+                        change.value = &change.value - &new.value - &fee_for_output;
                         self.balance += &fee_for_output;
 
                         self.extra_changes.push(new.clone());
@@ -606,7 +632,6 @@ impl Thermostat {
         }
 
         self.balance_excess(estimator)?;
-
         self.split_accumulators(&utxos, estimator)
     }
 
@@ -652,6 +677,7 @@ impl InputSelectionAlgorithm for Thermostat {
         input_output_setup: InputOutputSetup<Self::InputUtxo, Self::OutputUtxo>,
     ) -> anyhow::Result<InputSelectionResult<Self::InputUtxo, Self::OutputUtxo>> {
         self.reset();
+        self.outputs = input_output_setup.fixed_outputs.clone();
         for (token, asset) in input_output_setup.input_asset_balance.iter() {
             *self
                 .asset_balance
@@ -664,15 +690,20 @@ impl InputSelectionAlgorithm for Thermostat {
                 .entry(token.clone())
                 .or_insert_with(Balance::zero) -= asset.quantity.clone();
         }
+        self.selected_inputs_value += &input_output_setup.input_balance;
         self.balance += &input_output_setup.input_balance;
         self.balance -= &input_output_setup.output_balance;
         self.optional_change_address = input_output_setup.change_address;
 
         self.select(estimator)?;
 
-        let input_balance = &input_output_setup.input_balance + &self.selected_inputs_value;
-        let mut input_asset_balance = input_output_setup.input_asset_balance;
-        for input in self.selected_inputs.iter() {
+        let mut input_balance = Value::zero();
+        let mut input_asset_balance = HashMap::new();
+        for input in self
+            .selected_inputs
+            .iter()
+            .chain(input_output_setup.fixed_inputs.iter())
+        {
             for asset in input.assets.iter() {
                 input_asset_balance
                     .entry(asset.fingerprint.clone())
@@ -684,11 +715,17 @@ impl InputSelectionAlgorithm for Thermostat {
                     })
                     .quantity += &asset.quantity;
             }
+            input_balance += &input.value;
         }
-        let mut output_balance = input_output_setup.output_balance;
-        let mut output_asset_balance = input_output_setup.output_asset_balance;
-        for input in self.changes.values().chain(self.extra_changes.iter()) {
-            for asset in input.assets.iter() {
+        let mut output_balance = Value::zero();
+        let mut output_asset_balance = HashMap::new();
+        for output in self
+            .changes
+            .values()
+            .chain(self.extra_changes.iter())
+            .chain(input_output_setup.fixed_outputs.iter())
+        {
+            for asset in output.assets.iter() {
                 output_asset_balance
                     .entry(asset.fingerprint.clone())
                     .or_insert(TransactionAsset {
@@ -699,8 +736,9 @@ impl InputSelectionAlgorithm for Thermostat {
                     })
                     .quantity += &asset.quantity;
             }
-            output_balance += &input.value;
+            output_balance += &output.value;
         }
+
         Ok(InputSelectionResult {
             input_balance,
             input_asset_balance,
@@ -744,6 +782,35 @@ mod tests {
     use deps::serde_json;
     use std::sync::Arc;
 
+    fn verify_balanced_result(result: &InputSelectionResult<UTxODetails, UTxOBuilder>) {
+        assert_eq!(
+            result.input_balance.clone() - &result.output_balance - &result.fee,
+            Value::zero()
+        );
+        let mut balance_by_token = HashMap::<TokenId, Value<Regulated>>::new();
+        for input in result.fixed_inputs.iter().chain(&result.chosen_inputs) {
+            *balance_by_token.entry(TokenId::MAIN).or_default() += &input.value;
+            for asset in input.assets.iter() {
+                *balance_by_token
+                    .entry(asset.fingerprint.clone())
+                    .or_default() += &asset.quantity;
+            }
+        }
+
+        for output in result.fixed_outputs.iter().chain(&result.changes) {
+            *balance_by_token.entry(TokenId::MAIN).or_default() -= &output.value;
+            for asset in output.assets.iter() {
+                *balance_by_token
+                    .entry(asset.fingerprint.clone())
+                    .or_default() -= &asset.quantity;
+            }
+        }
+        *balance_by_token.entry(TokenId::MAIN).or_default() -= &result.fee;
+
+        for (token, value) in balance_by_token.into_iter() {
+            assert_eq!(value, Value::zero());
+        }
+    }
     fn thermostat_config() -> ThermostatAlgoConfig {
         ThermostatAlgoConfig {
             num_accumulators: 20,
@@ -931,6 +998,8 @@ mod tests {
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
 
+        verify_balanced_result(&result);
+
         let inputs = result.chosen_inputs;
         assert_eq!(inputs.len(), 1);
         let input = inputs[0].clone();
@@ -1022,6 +1091,7 @@ mod tests {
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
+        verify_balanced_result(&result);
 
         let inputs = result.chosen_inputs;
         assert_eq!(inputs.len(), 1);
@@ -1107,6 +1177,7 @@ mod tests {
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
+        verify_balanced_result(&result);
 
         let inputs = result.chosen_inputs;
         assert_eq!(inputs.len(), 2);
@@ -1228,6 +1299,7 @@ mod tests {
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
+        verify_balanced_result(&result);
 
         let inputs = result.chosen_inputs;
         assert_eq!(inputs.len(), 1);
@@ -1316,6 +1388,7 @@ mod tests {
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
+        verify_balanced_result(&result);
 
         let inputs = result.chosen_inputs;
         assert_eq!(inputs.len(), 81);
@@ -1400,6 +1473,7 @@ mod tests {
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
+        verify_balanced_result(&result);
 
         let inputs = result.chosen_inputs;
         assert_eq!(inputs.len(), 3);
@@ -1471,6 +1545,7 @@ mod tests {
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
+        verify_balanced_result(&result);
 
         assert_eq!(
             result.balance - estimator.min_required_fee().unwrap(),
@@ -1516,6 +1591,7 @@ mod tests {
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
+        verify_balanced_result(&result);
 
         assert_eq!(
             result.balance - estimator.min_required_fee().unwrap(),

@@ -9,6 +9,10 @@ pub trait TransactionFeeEstimator {
     type InputUtxo: Clone;
     type OutputUtxo: Clone;
 
+    fn count_outputs(&self) -> usize;
+
+    fn count_inputs(&self) -> usize;
+
     fn min_required_fee(&self) -> anyhow::Result<Value<Regulated>>;
 
     fn fee_for_input(&self, input: &Self::InputUtxo) -> anyhow::Result<Value<Regulated>>;
@@ -35,6 +39,14 @@ impl<Input, Output> DummyCmlFeeEstimate<Input, Output> {
 impl<Input: Clone, Output: Clone> TransactionFeeEstimator for DummyCmlFeeEstimate<Input, Output> {
     type InputUtxo = Input;
     type OutputUtxo = Output;
+
+    fn count_outputs(&self) -> usize {
+        0
+    }
+
+    fn count_inputs(&self) -> usize {
+        0
+    }
 
     fn min_required_fee(&self) -> anyhow::Result<Value<Regulated>> {
         Ok(Value::zero())

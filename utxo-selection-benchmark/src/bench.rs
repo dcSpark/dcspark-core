@@ -158,7 +158,11 @@ where
                 let computed_utxos = match computed_utxos {
                     None => {
                         insolvent_staking_keys.insert(stake_key);
-                        tracing::debug!("tx_number: {:?}, insolvent staking keys: {}", tx_number, insolvent_staking_keys.len());
+                        tracing::debug!(
+                            "tx_number: {:?}, insolvent staking keys: {}",
+                            tx_number,
+                            insolvent_staking_keys.len()
+                        );
 
                         // add balances
                         handle_partial_parsed(
@@ -349,11 +353,7 @@ where
                     &insolvent_staking_keys,
                     &discarded_staking_keys,
                 );
-                subtract_from_actual_balance(
-                    stake_key,
-                    &from,
-                    &mut staking_key_balance_actual,
-                );
+                subtract_from_actual_balance(stake_key, &from, &mut staking_key_balance_actual);
             }
             TxEvent::Partial { to } => {
                 handle_partial_parsed(

@@ -155,7 +155,7 @@ where
                 let computed_utxos = match computed_utxos {
                     None => {
                         insolvent_staking_keys.insert(stake_key);
-                        tracing::info!("insolvent staking keys: {}", insolvent_staking_keys.len());
+                        tracing::info!("tx_number: {:?}, insolvent staking keys: {}", tx_number, insolvent_staking_keys.len());
 
                         // add balances
                         handle_partial_parsed(
@@ -194,8 +194,8 @@ where
                     Ok(r) => r,
                     Err(err) => {
                         tracing::info!(
-                            "Can't select inputs for that address using provided algo {:?}",
-                            err
+                            "Can't select inputs for that address using provided algo {:?}, tx_number: {:?}",
+                            err, tx_number,
                         );
                         insolvent_staking_keys.insert(stake_key);
 
@@ -245,8 +245,8 @@ where
                         Ok(r) => r,
                         Err(err) => {
                             tracing::info!(
-                                "Can't balance inputs for that address using provided algo {:?}",
-                                err
+                                "Can't balance inputs for that address using provided algo {:?}, tx_number: {:?}",
+                                err, tx_number
                             );
                             insolvent_staking_keys.insert(stake_key);
 
@@ -266,7 +266,7 @@ where
                     };
 
                     if !balance_change_result.is_balanced() {
-                        tracing::info!("Can't balance inputs for that address using provided algo event after running balance");
+                        tracing::info!("Can't balance inputs for that address using provided algo event after running balance, tx_number: {:?}", tx_number);
                         insolvent_staking_keys.insert(stake_key);
 
                         // add balances
@@ -287,7 +287,7 @@ where
                     // changes from first stage + changes from balance + original fixed outputs = all outputs
                     changes.append(&mut balance_change_result.changes)
                 } else if !select_result.is_balanced() {
-                    tracing::info!("Can't balance inputs for that address using provided algo");
+                    tracing::info!("Can't balance inputs for that address using provided algo, tx_number: {:?}", tx_number);
                     insolvent_staking_keys.insert(stake_key);
 
                     // add balances

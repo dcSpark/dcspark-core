@@ -332,7 +332,6 @@ where
                 );
                 subtract_from_actual_balance(
                     stake_key,
-                    &fee,
                     &from,
                     &mut staking_key_balance_actual,
                 );
@@ -550,7 +549,6 @@ fn add_to_actual_balance(
 
 fn subtract_from_actual_balance(
     staking_key: u64,
-    fee: &dcspark_core::Value<Regulated>,
     from: &Vec<TxOutput>,
     staking_key_balance_actual: &mut HashMap<u64, HashMap<TokenId, Balance<Regulated>>>,
 ) {
@@ -563,7 +561,6 @@ fn subtract_from_actual_balance(
             *balance.entry(asset.fingerprint.clone()).or_default() -= &asset.quantity;
         }
     }
-    *balance.entry(TokenId::MAIN).or_default() -= fee;
 }
 
 fn add_new_selected_outputs_to_stake_keys(

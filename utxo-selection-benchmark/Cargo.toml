@@ -8,8 +8,11 @@ edition = "2021"
 [dependencies]
 entity = { git = "https://github.com/dcSpark/carp.git", branch = "egostkin/generate-benchmark-data" }
 dcspark-core = { path = "../core" }
+utxo-selection = { path = "../utxo-selection" }
+cardano-utils = { path = "../cardano-utils" }
 
 anyhow = "1.0.53"
+itertools = "0.10.5"
 serde = {version = "1.0.144", features = ["derive", "rc"]}
 tokio = { version = "1.16.1", features = ["full"] }
 hex = "0.4.3"

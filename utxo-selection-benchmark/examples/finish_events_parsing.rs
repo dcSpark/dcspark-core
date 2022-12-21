@@ -1,17 +1,19 @@
+use anyhow::{anyhow, Context};
+use cardano_multiplatform_lib::address::{Address, StakeCredential};
+use cardano_multiplatform_lib::error::JsError;
+use clap::Parser;
+use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
-use anyhow::{anyhow, Context};
-use clap::Parser;
-use cardano_multiplatform_lib::address::{Address, StakeCredential};
-use cardano_multiplatform_lib::error::JsError;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use utxo_selection_benchmark::mapper::DataMapper;
 use utxo_selection_benchmark::tx_event::{TxEvent, TxOutput};
-use utxo_selection_benchmark::utils::{dump_hashmap_to_file, dump_hashset_to_file, read_hashmap_from_file, read_hashset_from_file};
-use serde::Deserialize;
+use utxo_selection_benchmark::utils::{
+    dump_hashmap_to_file, dump_hashset_to_file, read_hashmap_from_file, read_hashset_from_file,
+};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -49,9 +51,7 @@ async fn _main() -> anyhow::Result<()> {
     // Start logging setup block
     let fmt_layer = tracing_subscriber::fmt::layer().with_test_writer();
 
-    tracing_subscriber::registry()
-        .with(fmt_layer)
-        .init();
+    tracing_subscriber::registry().with(fmt_layer).init();
 
     let Cli { config_path } = Cli::parse();
 
@@ -69,24 +69,33 @@ async fn _main() -> anyhow::Result<()> {
         )
     })?;
 
-    let mut unparsed_addresses_file = if config.unparsed_transaction_addresses.exists() && config.unparsed_transaction_addresses.is_file() {
+    let mut unparsed_addresses_file = if config.unparsed_transaction_addresses.exists()
+        && config.unparsed_transaction_addresses.is_file()
+    {
         File::open(config.unparsed_transaction_addresses.clone())?
     } else {
-        return Err(anyhow!("can't open input file: {:?}", config.unparsed_transaction_addresses.clone()))
+        return Err(anyhow!(
+            "can't open input file: {:?}",
+            config.unparsed_transaction_addresses.clone()
+        ));
     };
 
     tracing::info!("loading mappings");
 
-    let mut stake_address_to_num = DataMapper::<StakeCredential>::load_from_file(config.staking_creds_mapping)?;
+    let mut stake_address_to_num =
+        DataMapper::<StakeCredential>::load_from_file(config.staking_creds_mapping)?;
     tracing::info!("stake addresses loaded");
 
-    let mut payment_address_to_num = DataMapper::<StakeCredential>::load_from_file(config.payment_creds_mapping)?;
+    let mut payment_address_to_num =
+        DataMapper::<StakeCredential>::load_from_file(config.payment_creds_mapping)?;
     tracing::info!("payment addresses loaded");
 
-    let mut banned_addresses: HashSet<(u64, Option<u64>)> = read_hashset_from_file(config.banned_addresses)?;
+    let mut banned_addresses: HashSet<(u64, Option<u64>)> =
+        read_hashset_from_file(config.banned_addresses)?;
     tracing::info!("banned addresses loaded");
 
-    let mut address_to_mapping: HashMap<String, (u64, Option<u64>)> = read_hashmap_from_file(config.address_to_mapping)?;
+    let mut address_to_mapping: HashMap<String, (u64, Option<u64>)> =
+        read_hashmap_from_file(config.address_to_mapping)?;
     tracing::info!("address mapping loaded");
 
     tracing::info!("successfully loaded mappings");
@@ -112,7 +121,7 @@ async fn _main() -> anyhow::Result<()> {
                     );
                     banned_addresses.insert((payment_mapping, staking_mapping));
                 }
-            }
+            },
             Err(err) => {
                 tracing::error!("can't parse address: {:?}, addr={:?}", err, address);
             }

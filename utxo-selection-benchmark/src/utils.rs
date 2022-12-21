@@ -20,7 +20,7 @@ pub fn dump_hashmap_to_file<Key: Eq + Hash + Serialize, Value: Serialize>(
                 serde_json::to_string(key)?,
                 serde_json::to_string(value)?
             )
-                .as_bytes(),
+            .as_bytes(),
         )?;
     }
     Ok(())

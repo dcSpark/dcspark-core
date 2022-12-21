@@ -68,15 +68,11 @@ pub struct UTxOBuilder {
 }
 
 impl UTxOBuilder {
-    pub fn new(
-        address: Address,
-        value: Value<Regulated>,
-        assets: Vec<TransactionAsset>,
-    ) -> anyhow::Result<Self> {
-        Ok(Self {
+    pub fn new(address: Address, value: Value<Regulated>, assets: Vec<TransactionAsset>) -> Self {
+        Self {
             address,
             value,
             assets,
-        })
+        }
     }
 }

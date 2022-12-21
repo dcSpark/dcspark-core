@@ -1,14 +1,14 @@
+use anyhow::anyhow;
+use clap::Parser;
+use entity::prelude::TransactionModel;
+use hex;
+use serde::Deserialize;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::str::FromStr;
-use anyhow::anyhow;
-use serde::Deserialize;
-use clap::Parser;
-use entity::prelude::TransactionModel;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use hex;
 
 #[derive(Parser, Debug)]
 #[clap(version)]
@@ -17,7 +17,6 @@ pub struct Cli {
     #[clap(long, value_parser)]
     file_path: PathBuf,
 }
-
 
 #[tokio::main]
 async fn main() {
@@ -28,16 +27,14 @@ async fn main() {
 async fn _main() -> anyhow::Result<()> {
     let fmt_layer = tracing_subscriber::fmt::layer().with_test_writer();
 
-    tracing_subscriber::registry()
-        .with(fmt_layer)
-        .init();
+    tracing_subscriber::registry().with(fmt_layer).init();
 
     let Cli { file_path } = Cli::parse();
 
     let mut unparsed_txs_file = if file_path.exists() && file_path.is_file() {
         File::open(file_path.clone())?
     } else {
-        return Err(anyhow!("can't open input file: {:?}", file_path.clone()))
+        return Err(anyhow!("can't open input file: {:?}", file_path.clone()));
     };
 
     let mut unparsed_addresses_file_lines = BufReader::new(unparsed_txs_file).lines();

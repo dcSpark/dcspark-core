@@ -217,15 +217,18 @@ where
                     }
                 };
 
+                let mut computed_available_utxos = algorithm.available_inputs();
+                let mut changes = select_result.changes.clone();
+
                 if !select_result.is_balanced() && allow_balance_change {
                     balance_change_algo.set_available_inputs(computed_available_utxos.clone())?;
 
                     // now all selected inputs are chosen ones
-                    let mut fixed_inputs = select_result.fixed_inputs;
-                    fixed_inputs.append(&mut select_result.chosen_inputs);
+                    let mut fixed_inputs = select_result.fixed_inputs.clone();
+                    fixed_inputs.append(&mut select_result.chosen_inputs.clone());
 
                     // outputs as well
-                    let mut fixed_outputs = select_result.fixed_outputs;
+                    let mut fixed_outputs = select_result.fixed_outputs.clone();
                     fixed_outputs.append(&mut changes.clone());
 
                     let mut balance_change_result = balance_change_algo.select_inputs(
@@ -304,8 +307,6 @@ where
                     continue;
                 }
 
-                let mut computed_available_utxos = algorithm.available_inputs();
-                let mut changes = select_result.changes.clone();
                 let mut inputs_value = dcspark_core::Value::<Regulated>::zero();
                 for change in select_result.changes.iter() {
                     inputs_value += &change.value;

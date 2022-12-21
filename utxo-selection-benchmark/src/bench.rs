@@ -128,7 +128,10 @@ where
 
                 let change_address_to_use = address_from_pair(change_address_to_use);
 
-                let fixed_outputs: Vec<_> = get_non_change_outputs(&to, &change_addresses);
+                let mut fixed_outputs: Vec<_> = get_non_change_outputs(&to, &change_addresses);
+                if fixed_outputs.is_empty() {
+                    fixed_outputs = outputs_to_builders(to.clone());
+                }
 
                 let mut total_output_balance = dcspark_core::Value::zero();
                 let mut total_output_tokens = HashMap::<TokenId, TransactionAsset>::new();
@@ -723,8 +726,14 @@ fn get_non_change_outputs(
         .filter(|output| {
             output.address.is_none() || !change_addresses.contains(&output.address.clone().unwrap())
         })
+        .cloned()
         .collect();
-    let fixed_outputs = non_changes
+    let fixed_outputs = outputs_to_builders(non_changes);
+    fixed_outputs
+}
+
+fn outputs_to_builders(outputs: Vec<TxOutput>) -> Vec<UTxOBuilder> {
+    outputs
         .into_iter()
         .map(|output| {
             UTxOBuilder::new(
@@ -740,8 +749,7 @@ fn get_non_change_outputs(
                     .collect::<Vec<_>>(),
             )
         })
-        .collect::<Vec<_>>();
-    fixed_outputs
+        .collect::<Vec<_>>()
 }
 
 fn choose_change_address(

@@ -469,15 +469,15 @@ fn print_computed_balance(
             let print_value = match diff {
                 Balance::Debt(value) => {
                     better_than_actual_element_wise.push(1);
-                    format!("{:?}", value)
+                    format!("worse: -{}", value)
                 }
                 Balance::Balanced => {
                     better_than_actual_element_wise.push(0);
-                    format!("{:?}", dcspark_core::Value::<Regulated>::zero())
+                    format!("same: {}", dcspark_core::Value::<Regulated>::zero())
                 }
                 Balance::Excess(value) => {
                     better_than_actual_element_wise.push(-1);
-                    format!("{:?}", value)
+                    format!("better: {}", value)
                 }
             };
             output_balance.write_all(

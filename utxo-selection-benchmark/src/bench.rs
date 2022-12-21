@@ -337,7 +337,7 @@ where
                 }
                 assert_eq!(inputs_value, Value::zero());
 
-                println!("inputs: {:?}", selected_inputs);
+                tracing::info!("inputs: {:?}", selected_inputs);
                 recount_available_inputs(
                     selected_inputs,
                     stake_key,
@@ -345,13 +345,13 @@ where
                     &mut staking_key_balance_computed,
                 );
 
-                println!("current balance: {:?}", staking_key_balance_computed.get(&stake_key));
+                tracing::info!("current balance: {:?}", staking_key_balance_computed.get(&stake_key));
 
                 let outputs: Vec<_> = fixed_outputs
                     .into_iter()
                     .chain(changes.into_iter())
                     .collect();
-                println!("outputs: {:?}", outputs);
+                tracing::info!("outputs: {:?}", outputs);
                 add_new_selected_outputs_to_stake_keys(
                     tx_number,
                     outputs,
@@ -360,7 +360,8 @@ where
                     &insolvent_staking_keys,
                     &discarded_staking_keys,
                 );
-                println!("current balance: {:?}", staking_key_balance_computed.get(&stake_key));
+                tracing::info!("current balance: {:?}", staking_key_balance_computed.get(&stake_key));
+                tracing::info!("actual balance: {:?}", staking_key_balance_actual.get(&stake_key));
 
                 add_to_actual_balance(
                     &to,
@@ -368,7 +369,11 @@ where
                     &insolvent_staking_keys,
                     &discarded_staking_keys,
                 );
+                tracing::info!("actual balance: {:?}", staking_key_balance_actual.get(&stake_key));
+
                 subtract_from_actual_balance(stake_key, &from, &mut staking_key_balance_actual);
+                tracing::info!("actual balance: {:?}", staking_key_balance_actual.get(&stake_key));
+
                 *staking_key_fee_actual.entry(stake_key).or_default() += &fee;
                 *staking_key_fee_computed.entry(stake_key).or_default() += &fee_computed;
             }

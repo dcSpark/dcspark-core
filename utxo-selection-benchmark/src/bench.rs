@@ -57,8 +57,12 @@ where
 {
     let mut staking_key_balance_computed =
         HashMap::<u64, HashMap<TokenId, Balance<Regulated>>>::new();
+    let mut staking_key_fee_computed =
+        HashMap::<u64, Value::<Regulated>>::new();
     let mut staking_key_balance_actual =
         HashMap::<u64, HashMap<TokenId, Balance<Regulated>>>::new();
+    let mut staking_key_fee_actual =
+        HashMap::<u64, Value::<Regulated>>::new();
 
     // staking key -> payment key -> utxos
     let mut address_computed_utxos_by_stake_key =
@@ -75,8 +79,18 @@ where
         let event: TxEvent = serde_json::from_str(&event)?;
         match event {
             TxEvent::Full { to, fee, from } => {
+                let mut input_value = Value::zero();
+                let mut output_value = Value::zero();
+                for to in to.iter() {
+                    input_value += &to.value;
+                }
+                input_value += &fee;
+                for from in from.iter() {
+                    output_value += &from.value;
+                }
+
                 let stake_key = is_supported_for_selection(&from);
-                if stake_key.is_none() {
+                if stake_key.is_none() || input_value != output_value {
                     let stake_keys_to_discard: Vec<_> = from
                         .iter()
                         .map(|input| input.address.map(|addr| addr.1).flatten())
@@ -153,7 +167,6 @@ where
                     }
                 }
 
-                let mut available_utxos: Vec<UTxODetails> = vec![];
                 let computed_utxos = address_computed_utxos_by_stake_key.get(&stake_key);
                 let computed_utxos = match computed_utxos {
                     None => {
@@ -226,6 +239,8 @@ where
 
                 let mut computed_available_utxos = algorithm.available_inputs();
                 let mut changes = select_result.changes.clone();
+                let mut selected_inputs = select_result.chosen_inputs.clone();
+                let mut fee_computed = select_result.fee.clone();
 
                 if !select_result.is_balanced() && allow_balance_change {
                     balance_change_algo.set_available_inputs(computed_available_utxos.clone())?;
@@ -295,7 +310,9 @@ where
 
                     computed_available_utxos = balance_change_algo.available_inputs();
                     // changes from first stage + changes from balance + original fixed outputs = all outputs
-                    changes.append(&mut balance_change_result.changes)
+                    changes.append(&mut balance_change_result.changes);
+                    selected_inputs.append(&mut balance_change_result.chosen_inputs);
+                    fee_computed = balance_change_result.fee;
                 } else if !select_result.is_balanced() {
                     tracing::debug!("Can't balance inputs for that address using provided algo, tx_number: {:?}", tx_number);
                     insolvent_staking_keys.insert(stake_key);
@@ -321,7 +338,7 @@ where
                 for change in select_result.fixed_outputs.iter() {
                     inputs_value += &change.value;
                 }
-                inputs_value += &select_result.fee;
+                inputs_value += &fee_computed;
                 for change in select_result.fixed_inputs.iter() {
                     inputs_value -= &change.value;
                 }
@@ -330,17 +347,24 @@ where
                 }
                 assert_eq!(inputs_value, Value::zero());
 
+                // tracing::info!("current balance: {:?}", staking_key_balance_computed.get(&stake_key));
+                // tracing::info!("actual balance: {:?}", staking_key_balance_actual.get(&stake_key));
+                //
+                // tracing::info!("inputs: {:?}", selected_inputs);
                 recount_available_inputs(
-                    computed_available_utxos,
+                    selected_inputs,
                     stake_key,
                     &mut address_computed_utxos_by_stake_key,
                     &mut staking_key_balance_computed,
                 );
 
+                // tracing::info!("current balance: {:?}", staking_key_balance_computed.get(&stake_key));
+
                 let outputs: Vec<_> = fixed_outputs
                     .into_iter()
                     .chain(changes.into_iter())
                     .collect();
+                // tracing::info!("outputs: {:?}", outputs);
                 add_new_selected_outputs_to_stake_keys(
                     tx_number,
                     outputs,
@@ -349,6 +373,8 @@ where
                     &insolvent_staking_keys,
                     &discarded_staking_keys,
                 );
+                // tracing::info!("current balance: {:?}", staking_key_balance_computed.get(&stake_key));
+                // tracing::info!("actual balance: {:?}", staking_key_balance_actual.get(&stake_key));
 
                 add_to_actual_balance(
                     &to,
@@ -356,7 +382,13 @@ where
                     &insolvent_staking_keys,
                     &discarded_staking_keys,
                 );
+                // tracing::info!("actual balance: {:?}", staking_key_balance_actual.get(&stake_key));
+
                 subtract_from_actual_balance(stake_key, &from, &mut staking_key_balance_actual);
+                // tracing::info!("actual balance: {:?}", staking_key_balance_actual.get(&stake_key));
+
+                *staking_key_fee_actual.entry(stake_key).or_default() += &fee;
+                *staking_key_fee_computed.entry(stake_key).or_default() += &fee_computed;
             }
             TxEvent::Partial { to } => {
                 handle_partial_parsed(
@@ -400,6 +432,8 @@ where
     print_computed_balance(
         staking_key_balance_computed,
         staking_key_balance_actual,
+        staking_key_fee_actual,
+        staking_key_fee_computed,
         output_balance,
         output_balance_short,
     )?;
@@ -418,6 +452,8 @@ fn print_hashmap(keys: HashSet<u64>, path: PathBuf) -> anyhow::Result<()> {
 fn print_computed_balance(
     staking_key_balance_computed: HashMap<u64, HashMap<TokenId, Balance<Regulated>>>,
     staking_key_balance_actual: HashMap<u64, HashMap<TokenId, Balance<Regulated>>>,
+    staking_key_fee_actual: HashMap<u64, Value<Regulated>>,
+    staking_key_fee_computed: HashMap<u64, Value<Regulated>>,
     output_balance: PathBuf,
     output_balance_short: PathBuf,
 ) -> anyhow::Result<()> {
@@ -469,21 +505,21 @@ fn print_computed_balance(
             let print_value = match diff {
                 Balance::Debt(value) => {
                     better_than_actual_element_wise.push(1);
-                    format!("{:?}", value)
+                    format!("worse: -{}", value)
                 }
                 Balance::Balanced => {
                     better_than_actual_element_wise.push(0);
-                    format!("{:?}", dcspark_core::Value::<Regulated>::zero())
+                    format!("same: {}", dcspark_core::Value::<Regulated>::zero())
                 }
                 Balance::Excess(value) => {
                     better_than_actual_element_wise.push(-1);
-                    format!("{:?}", value)
+                    format!("better: {}", value)
                 }
             };
             output_balance.write_all(
                 format!(
-                    "diff: address: {:?}, token: {:?}, diff: {:?}, actual: {:?}, computed: {:?}\n",
-                    key, token, print_value, actual_token_balance, computed_token_balance
+                    "diff: address: {:?}, token: {:?}, diff: {:?}, actual: {:?}, computed: {:?}, fee actual: {:?}, fee computed: {:?}\n",
+                    key, token, print_value, actual_token_balance, computed_token_balance, staking_key_fee_actual.get(key), staking_key_fee_computed.get(key),
                 )
                 .as_bytes(),
             )?;
@@ -694,7 +730,7 @@ fn add_untouched_outputs_to_stake_keys(
 }
 
 fn recount_available_inputs(
-    computed_available_utxos: Vec<UTxODetails>,
+    chosen_inputs: Vec<UTxODetails>,
     stake_key: u64,
     address_computed_utxos_by_stake_key: &mut HashMap<u64, HashMap<u64, Vec<UTxODetails>>>,
     staking_key_balance_computed: &mut HashMap<u64, HashMap<TokenId, Balance<Regulated>>>,
@@ -702,26 +738,23 @@ fn recount_available_inputs(
     let current_stake_key_utxos = address_computed_utxos_by_stake_key
         .entry(stake_key)
         .or_default();
-    current_stake_key_utxos.clear();
     let current_token_balance = staking_key_balance_computed
         .entry(stake_key.clone())
         .or_default();
-    current_token_balance.clear();
 
-    for available_input in computed_available_utxos.into_iter() {
-        let (payment, _) = pair_from_address(available_input.address.clone()).unwrap();
-
-        *current_token_balance.entry(TokenId::MAIN).or_default() += &available_input.value;
-        for token in available_input.assets.iter() {
+    for chosen_input in chosen_inputs.into_iter() {
+        let (payment, staking) = pair_from_address(chosen_input.address.clone()).unwrap();
+        if staking.is_none() || staking.unwrap() != stake_key {
+            continue;
+        }
+        *current_token_balance.entry(TokenId::MAIN).or_default() -= &chosen_input.value;
+        for token in chosen_input.assets.iter() {
             *current_token_balance
                 .entry(token.fingerprint.clone())
-                .or_default() += &token.quantity;
+                .or_default() -= &token.quantity;
         }
 
-        current_stake_key_utxos
-            .entry(payment)
-            .or_default()
-            .push(available_input);
+        current_stake_key_utxos.entry(payment).or_default().retain_mut(|elem| elem.pointer != chosen_input.pointer);
     }
 }
 

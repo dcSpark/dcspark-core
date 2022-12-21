@@ -128,7 +128,10 @@ where
 
                 let change_address_to_use = address_from_pair(change_address_to_use);
 
-                let fixed_outputs: Vec<_> = get_non_change_outputs(&to, &change_addresses);
+                let mut fixed_outputs: Vec<_> = get_non_change_outputs(&to, &change_addresses);
+                if fixed_outputs.is_empty() {
+                    fixed_outputs = outputs_to_builders(to.clone());
+                }
 
                 let mut total_output_balance = dcspark_core::Value::zero();
                 let mut total_output_tokens = HashMap::<TokenId, TransactionAsset>::new();
@@ -221,11 +224,11 @@ where
                     balance_change_algo.set_available_inputs(computed_available_utxos.clone())?;
 
                     // now all selected inputs are chosen ones
-                    let mut fixed_inputs = select_result.fixed_inputs;
-                    fixed_inputs.append(&mut select_result.chosen_inputs);
+                    let mut fixed_inputs = select_result.fixed_inputs.clone();
+                    fixed_inputs.append(&mut select_result.chosen_inputs.clone());
 
                     // outputs as well
-                    let mut fixed_outputs = select_result.fixed_outputs;
+                    let mut fixed_outputs = select_result.fixed_outputs.clone();
                     fixed_outputs.append(&mut changes.clone());
 
                     let mut balance_change_result = balance_change_algo.select_inputs(
@@ -304,6 +307,22 @@ where
                     continue;
                 }
 
+                let mut inputs_value = dcspark_core::Value::<Regulated>::zero();
+                for change in select_result.changes.iter() {
+                    inputs_value += &change.value;
+                }
+                for change in select_result.fixed_outputs.iter() {
+                    inputs_value += &change.value;
+                }
+                inputs_value += &select_result.fee;
+                for change in select_result.fixed_inputs.iter() {
+                    inputs_value -= &change.value;
+                }
+                for change in select_result.chosen_inputs.iter() {
+                    inputs_value -= &change.value;
+                }
+                assert_eq!(inputs_value, Value::zero());
+
                 recount_available_inputs(
                     computed_available_utxos,
                     stake_key,
@@ -332,7 +351,6 @@ where
                 );
                 subtract_from_actual_balance(
                     stake_key,
-                    &fee,
                     &from,
                     &mut staking_key_balance_actual,
                 );
@@ -461,8 +479,8 @@ fn print_computed_balance(
             };
             output_balance.write_all(
                 format!(
-                    "diff: address: {:?}, token: {:?}, diff: {:?}\n",
-                    key, token, print_value
+                    "diff: address: {:?}, token: {:?}, diff: {:?}, actual: {:?}, computed: {:?}\n",
+                    key, token, print_value, actual_token_balance, computed_token_balance
                 )
                 .as_bytes(),
             )?;
@@ -550,7 +568,6 @@ fn add_to_actual_balance(
 
 fn subtract_from_actual_balance(
     staking_key: u64,
-    fee: &dcspark_core::Value<Regulated>,
     from: &Vec<TxOutput>,
     staking_key_balance_actual: &mut HashMap<u64, HashMap<TokenId, Balance<Regulated>>>,
 ) {
@@ -563,7 +580,6 @@ fn subtract_from_actual_balance(
             *balance.entry(asset.fingerprint.clone()).or_default() -= &asset.quantity;
         }
     }
-    *balance.entry(TokenId::MAIN).or_default() -= fee;
 }
 
 fn add_new_selected_outputs_to_stake_keys(
@@ -726,8 +742,14 @@ fn get_non_change_outputs(
         .filter(|output| {
             output.address.is_none() || !change_addresses.contains(&output.address.clone().unwrap())
         })
+        .cloned()
         .collect();
-    let fixed_outputs = non_changes
+    let fixed_outputs = outputs_to_builders(non_changes);
+    fixed_outputs
+}
+
+fn outputs_to_builders(outputs: Vec<TxOutput>) -> Vec<UTxOBuilder> {
+    outputs
         .into_iter()
         .map(|output| {
             UTxOBuilder::new(
@@ -743,8 +765,7 @@ fn get_non_change_outputs(
                     .collect::<Vec<_>>(),
             )
         })
-        .collect::<Vec<_>>();
-    fixed_outputs
+        .collect::<Vec<_>>()
 }
 
 fn choose_change_address(

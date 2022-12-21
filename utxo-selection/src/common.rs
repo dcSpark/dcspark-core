@@ -52,7 +52,7 @@ pub struct InputSelectionResult<InputUtxo: Clone, OutputUtxo: Clone> {
 
 impl<InputUtxo: Clone, OutputUtxo: Clone> InputSelectionResult<InputUtxo, OutputUtxo> {
     pub fn is_balanced(&self) -> bool {
-        self.balance.balanced()
+        (self.balance.clone() - self.fee.clone()).balanced()
             && self
                 .asset_balance
                 .iter()

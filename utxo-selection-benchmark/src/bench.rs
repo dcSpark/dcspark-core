@@ -57,8 +57,12 @@ where
 {
     let mut staking_key_balance_computed =
         HashMap::<u64, HashMap<TokenId, Balance<Regulated>>>::new();
+    let mut staking_key_fee_computed =
+        HashMap::<u64, Value::<Regulated>>::new();
     let mut staking_key_balance_actual =
         HashMap::<u64, HashMap<TokenId, Balance<Regulated>>>::new();
+    let mut staking_key_fee_actual =
+        HashMap::<u64, Value::<Regulated>>::new();
 
     // staking key -> payment key -> utxos
     let mut address_computed_utxos_by_stake_key =
@@ -226,6 +230,7 @@ where
                 let mut computed_available_utxos = algorithm.available_inputs();
                 let mut changes = select_result.changes.clone();
                 let mut selected_inputs = select_result.chosen_inputs.clone();
+                let mut fee_computed = select_result.fee.clone();
 
                 if !select_result.is_balanced() && allow_balance_change {
                     balance_change_algo.set_available_inputs(computed_available_utxos.clone())?;
@@ -297,6 +302,7 @@ where
                     // changes from first stage + changes from balance + original fixed outputs = all outputs
                     changes.append(&mut balance_change_result.changes);
                     selected_inputs.append(&mut balance_change_result.chosen_inputs);
+                    fee_computed = balance_change_result.fee;
                 } else if !select_result.is_balanced() {
                     tracing::debug!("Can't balance inputs for that address using provided algo, tx_number: {:?}", tx_number);
                     insolvent_staking_keys.insert(stake_key);
@@ -322,7 +328,7 @@ where
                 for change in select_result.fixed_outputs.iter() {
                     inputs_value += &change.value;
                 }
-                inputs_value += &select_result.fee;
+                inputs_value += &fee_computed;
                 for change in select_result.fixed_inputs.iter() {
                     inputs_value -= &change.value;
                 }
@@ -358,6 +364,8 @@ where
                     &discarded_staking_keys,
                 );
                 subtract_from_actual_balance(stake_key, &from, &mut staking_key_balance_actual);
+                *staking_key_fee_actual.entry(stake_key).or_default() += &fee;
+                *staking_key_fee_computed.entry(stake_key).or_default() += &fee_computed;
             }
             TxEvent::Partial { to } => {
                 handle_partial_parsed(
@@ -401,6 +409,8 @@ where
     print_computed_balance(
         staking_key_balance_computed,
         staking_key_balance_actual,
+        staking_key_fee_actual,
+        staking_key_fee_computed,
         output_balance,
         output_balance_short,
     )?;
@@ -419,6 +429,8 @@ fn print_hashmap(keys: HashSet<u64>, path: PathBuf) -> anyhow::Result<()> {
 fn print_computed_balance(
     staking_key_balance_computed: HashMap<u64, HashMap<TokenId, Balance<Regulated>>>,
     staking_key_balance_actual: HashMap<u64, HashMap<TokenId, Balance<Regulated>>>,
+    staking_key_fee_actual: HashMap<u64, Value<Regulated>>,
+    staking_key_fee_computed: HashMap<u64, Value<Regulated>>,
     output_balance: PathBuf,
     output_balance_short: PathBuf,
 ) -> anyhow::Result<()> {
@@ -483,8 +495,8 @@ fn print_computed_balance(
             };
             output_balance.write_all(
                 format!(
-                    "diff: address: {:?}, token: {:?}, diff: {:?}, actual: {:?}, computed: {:?}\n",
-                    key, token, print_value, actual_token_balance, computed_token_balance
+                    "diff: address: {:?}, token: {:?}, diff: {:?}, actual: {:?}, computed: {:?}, fee actual: {:?}, fee computed: {:?}\n",
+                    key, token, print_value, actual_token_balance, computed_token_balance, staking_key_fee_actual.get(key), staking_key_fee_computed.get(key),
                 )
                 .as_bytes(),
             )?;

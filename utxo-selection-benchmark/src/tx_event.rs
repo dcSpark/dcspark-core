@@ -25,7 +25,11 @@ impl From<TxAsset> for TransactionAsset {
 }
 
 pub fn address_from_pair(address: (u64, Option<u64>)) -> Address {
-    Address::new(format!("{}_{:?}", address.0, address.1))
+    if let Some(staking) = address.1 {
+        Address::new(format!("{}_{}", address.0, staking))
+    } else {
+        Address::new(format!("{}", address.0))
+    }
 }
 
 pub fn pair_from_address(address: Address) -> Option<(u64, Option<u64>)> {
@@ -37,9 +41,6 @@ pub fn pair_from_address(address: Address) -> Option<(u64, Option<u64>)> {
         .into_iter()
         .map(|s| s.to_string())
         .collect::<Vec<_>>();
-    if split.len() != 2 {
-        return None;
-    }
     let payment = match split
         .get(0)
         .map(|payment| u64::from_str(payment.as_str()).ok())
@@ -48,11 +49,14 @@ pub fn pair_from_address(address: Address) -> Option<(u64, Option<u64>)> {
         None => return None,
         Some(payment) => payment,
     };
-    let staking = match split.get(0).map(|staking| {
+    if split.len() == 1 {
+        return Some((payment, None));
+    }
+    let staking = match split.get(1).map(|staking| {
         let staking: Option<u64> = serde_json::from_str(staking.as_str()).ok().flatten();
         staking
     }) {
-        None => return None,
+        None => return Some((payment, None)),
         Some(staking) => staking,
     };
     Some((payment, staking))
@@ -92,4 +96,26 @@ pub enum TxEvent {
     Partial {
         to: Vec<TxOutput>,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use dcspark_core::Address;
+    use crate::tx_event::{address_from_pair, pair_from_address};
+
+    #[test]
+    fn addr_test() {
+        let addresses = vec![(0, None), (1, Some(23))];
+        for addr in addresses {
+            let one = address_from_pair(addr.clone());
+            let two = pair_from_address(one).unwrap();
+            assert_eq!(addr.0, two.0, "{:?}", addr);
+            assert_eq!(addr.1.is_none(), two.1.is_none(), "{:?}", addr);
+            if let Some(stake) = addr.1 {
+                assert_eq!(stake, two.1.unwrap(), "{:?}", addr);
+            }
+        }
+
+        assert!(pair_from_address(Address::new("byron")).is_none());
+    }
 }

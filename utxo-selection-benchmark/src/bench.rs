@@ -461,8 +461,8 @@ fn print_computed_balance(
             };
             output_balance.write_all(
                 format!(
-                    "diff: address: {:?}, token: {:?}, diff: {:?}\n",
-                    key, token, print_value
+                    "diff: address: {:?}, token: {:?}, diff: {:?}, actual: {:?}, computed: {:?}\n",
+                    key, token, print_value, actual_token_balance, computed_token_balance
                 )
                 .as_bytes(),
             )?;

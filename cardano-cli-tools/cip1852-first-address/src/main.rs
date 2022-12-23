@@ -1,3 +1,6 @@
+//! Tool to derivate the first cardano address from a public key
+//!
+//! Also perform a check on the carp backend to see if the address is in use.
 use anyhow::{anyhow, bail, Context};
 use cardano_multiplatform_lib::{
     address::{BaseAddress, StakeCredential},
@@ -42,8 +45,15 @@ impl std::fmt::Display for NetworkId {
 }
 
 #[derive(Debug, StructOpt)]
+/// Perform derivation of the input public key, then generate the cardano base address
+/// corresponding to it, and check in the carp backend if the address is in use.
+///
+/// # Usage:
+///
+/// cargo run --bin cip1852-first-address -- --network mainnet --public-key 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 struct Opt {
     #[structopt(short, long)]
+    /// root public key of the derivation tree in hex format
     public_key: String,
 
     #[structopt(short, long)]

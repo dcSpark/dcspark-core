@@ -6,6 +6,7 @@ members = [
     "fraos",
     "indexed-log-map",
     "multiverse",
+    "cardano-cli-tools/cip1852-first-address",
 ]
 
 [workspace.metadata.release]

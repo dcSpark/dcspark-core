@@ -510,6 +510,9 @@ impl Thermostat {
                             continue;
                         }
 
+                        // new.value + change.value + fee_for_output = original value
+                        // (original valuye / 2 - fee_new) + (original value - original_value / 2 + fee_new - (fee_new + (fee_for_output - fee_new)) + fee_for_output =? original value
+
                         new.value = &value - &fee_new;
                         change.value = &change.value - &new.value - &fee_for_output;
                         self.balance += &fee_for_output;

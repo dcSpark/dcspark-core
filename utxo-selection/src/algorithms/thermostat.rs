@@ -1,14 +1,14 @@
 use crate::{
     InputOutputSetup, InputSelectionAlgorithm, InputSelectionResult, TransactionFeeEstimator,
-    UTxOBuilder,
 };
 use anyhow::{anyhow, Context};
 use cardano_utils::multisig_plan::MultisigPlan;
 use cardano_utils::network_id::NetworkInfo;
-use dcspark_core::tx::{TransactionAsset, UTxODetails, UtxoPointer};
+use dcspark_core::tx::{TransactionAsset, UTxOBuilder, UTxODetails, UtxoPointer};
 use dcspark_core::{Address, Balance, Regulated, TokenId, UTxOStore, Value};
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
+use deps::bigdecimal::ToPrimitive;
 
 pub struct ThermostatAlgoConfig {
     num_accumulators: usize,
@@ -28,21 +28,6 @@ impl Default for ThermostatAlgoConfig {
             main_token: TokenId::MAIN,
         }
     }
-}
-
-pub struct Thermostat {
-    optional_change_address: Option<Address>,
-    changes: HashMap<TokenId, UTxOBuilder>,
-    extra_changes: Vec<UTxOBuilder>,
-
-    outputs: Vec<UTxOBuilder>,
-    selected_inputs: Vec<UTxODetails>,
-    selected_inputs_value: Value<Regulated>,
-
-    balance: Balance<Regulated>,
-    asset_balance: HashMap<TokenId, Balance<Regulated>>,
-    config: ThermostatAlgoConfig,
-    available_utxos: UTxOStore,
 }
 
 pub struct ThermostatFeeEstimator {
@@ -135,14 +120,6 @@ impl TransactionFeeEstimator for ThermostatFeeEstimator {
     type InputUtxo = UTxODetails;
     type OutputUtxo = UTxOBuilder;
 
-    fn count_outputs(&self) -> usize {
-        self.outputs.len()
-    }
-
-    fn count_inputs(&self) -> usize {
-        self.inputs.len()
-    }
-
     fn min_required_fee(&self) -> anyhow::Result<Value<Regulated>> {
         let num_outputs = self.outputs.len();
         let num_inputs = self.inputs.len();
@@ -171,20 +148,6 @@ impl TransactionFeeEstimator for ThermostatFeeEstimator {
         Ok(())
     }
 
-    fn remaining_number_inputs_allowed(&mut self) -> anyhow::Result<usize> {
-        // compute if we need to reserve ROOM for a change address
-        // for the main asset
-        let reserved_room = self.size_of_one_output * self.asset_balance.len();
-        // we add that we might have two output per change if we have to split an accumulator
-        // in two in order to preserver distribution
-        let reserved_room = reserved_room * 2;
-
-        Ok(self
-            .max_size
-            .saturating_sub(self.current_size.saturating_add(reserved_room))
-            / self.size_of_one_input)
-    }
-
     fn fee_for_output(&self, _output: &Self::OutputUtxo) -> anyhow::Result<Value<Regulated>> {
         Ok(self.cost_output.clone())
     }
@@ -201,6 +164,30 @@ impl TransactionFeeEstimator for ThermostatFeeEstimator {
         self.outputs.push(output);
         Ok(())
     }
+
+    fn current_size(&self) -> anyhow::Result<usize> {
+        Ok(self.current_size)
+    }
+
+    fn max_size(&self) -> anyhow::Result<usize> {
+        Ok(self.max_size)
+    }
+}
+
+
+pub struct Thermostat {
+    optional_change_address: Option<Address>,
+    changes: HashMap<TokenId, UTxOBuilder>,
+    extra_changes: Vec<UTxOBuilder>,
+
+    outputs: Vec<UTxOBuilder>,
+    selected_inputs: Vec<UTxODetails>,
+    selected_inputs_value: Value<Regulated>,
+
+    balance: Balance<Regulated>,
+    asset_balance: HashMap<TokenId, Balance<Regulated>>,
+    config: ThermostatAlgoConfig,
+    available_utxos: UTxOStore,
 }
 
 impl Thermostat {
@@ -220,6 +207,27 @@ impl Thermostat {
             config,
             available_utxos: Default::default(),
         }
+    }
+
+    fn remaining_number_inputs_allowed<
+        Estimate: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>,
+    >(&self, estimate: &mut Estimate) -> anyhow::Result<usize> {
+        let known_output = self.outputs.first().ok_or_else(|| anyhow!("can't estimate output fee"))?;
+        let known_input = self.selected_inputs.first().ok_or_else(|| anyhow!("can't estimate input fee"))?;
+        let size_of_one_output = estimate.fee_for_output(known_output)?.to_usize().ok_or_else(|| anyhow!("can't estimate remaining inputs allowed"))?;
+        let size_of_one_input = estimate.fee_for_input(known_input)?.to_usize().ok_or_else(|| anyhow!("can't estimate remaining inputs allowed"))?;
+
+        // compute if we need to reserve ROOM for a change address
+        // for the main asset
+        let reserved_room = size_of_one_output * self.asset_balance.len();
+        // we add that we might have two output per change if we have to split an accumulator
+        // in two in order to preserver distribution
+        let reserved_room = reserved_room * 2;
+
+        Ok(estimate
+            .max_size()?
+            .saturating_sub(estimate.current_size()?.saturating_add(reserved_room))
+            / size_of_one_input)
     }
 
     fn add_input(&mut self, input: UTxODetails) {
@@ -441,20 +449,6 @@ impl Thermostat {
         &mut self,
         estimate: &mut Estimate,
     ) -> anyhow::Result<()> {
-        if let Balance::Excess(_excess) = self.current_balance(estimate)? {
-            let address = self
-                .optional_change_address
-                .as_ref()
-                .ok_or_else(|| anyhow!("Change address required"))?;
-
-            let default = UTxOBuilder::new(address.clone(), Value::zero(), vec![]);
-
-            if let Entry::Vacant(entry) = self.changes.entry(self.config.main_token.clone()) {
-                estimate.add_output(default.clone())?;
-                entry.insert(default);
-            };
-        }
-
         if let Balance::Excess(excess) = self.current_balance(estimate)? {
             let address = self
                 .optional_change_address
@@ -462,10 +456,11 @@ impl Thermostat {
                 .ok_or_else(|| anyhow!("Change address required"))?;
 
             let default = UTxOBuilder::new(address.clone(), Value::zero(), vec![]);
+            let mut inserted = false;
 
             let entry = match self.changes.entry(self.config.main_token.clone()) {
                 Entry::Vacant(entry) => {
-                    estimate.add_output(default.clone())?;
+                    inserted = true;
                     entry.insert(default)
                 }
                 Entry::Occupied(entry) => entry.into_mut(),
@@ -473,6 +468,15 @@ impl Thermostat {
 
             entry.value += &excess;
             self.balance -= excess;
+
+            if inserted {
+                let current_fee = estimate.min_required_fee()?;
+                estimate.add_output(entry.clone())?;
+                let new_fee = estimate.min_required_fee()?;
+                let paid = new_fee - current_fee;
+                entry.value -= &paid;
+                self.balance += paid;
+            }
         }
 
         Ok(())
@@ -603,7 +607,7 @@ impl Thermostat {
         let mut empty = vec![false; assets.len()];
         let mut index = 0;
 
-        while estimator.remaining_number_inputs_allowed()? > 0 {
+        while self.remaining_number_inputs_allowed(estimator)? > 0 {
             let asset = assets
                 .get(index)
                 .expect("We created it with the available values and index is capped by the len");

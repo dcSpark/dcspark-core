@@ -188,7 +188,6 @@ async fn _main() -> anyhow::Result<()> {
     let mut payment_address_to_num = DataMapper::<StakeCredential>::new();
     let mut policy_id_to_num = DataMapper::<PolicyID>::new();
     let mut asset_name_to_num = DataMapper::<String>::new();
-    let mut address_to_mapping = HashMap::<String, (u64, Option<u64>)>::new();
     let mut banned_addresses = HashSet::<(u64, Option<u64>)>::new();
 
     let mut unparsed_transactions = Vec::<TransactionModel>::new();
@@ -249,7 +248,6 @@ async fn _main() -> anyhow::Result<()> {
                         &mut stake_address_to_num,
                         &mut policy_id_to_num,
                         &mut asset_name_to_num,
-                        &mut address_to_mapping,
                     ) {
                         Ok(result) => result,
                         Err(err) => {
@@ -285,6 +283,33 @@ async fn _main() -> anyhow::Result<()> {
                     };
 
                     if let Some(event) = event {
+                        match &event {
+                            TxEvent::Full { to, fee, from } => {
+                                let mut input_value = dcspark_core::Value::zero();
+                                let mut output_value = dcspark_core::Value::zero();
+                                for to in to.iter() {
+                                    output_value += &to.value;
+                                }
+                                output_value += fee;
+                                for from in from.iter() {
+                                    input_value += &from.value;
+                                }
+                                if input_value != output_value {
+                                    for input in from.into_iter() {
+                                        if let Some(addr) = input.address {
+                                            banned_addresses.insert(addr);
+                                        }
+                                    }
+                                    for output in to.into_iter() {
+                                        if let Some(addr) = output.address {
+                                            banned_addresses.insert(addr);
+                                        }
+                                    }
+                                    continue;
+                                }
+                            }
+                            TxEvent::Partial { .. } => {}
+                        }
                         out_file.write_all(
                             format!("{}\n", serde_json::to_string(&event)?).as_bytes(),
                         )?;
@@ -329,7 +354,6 @@ async fn _main() -> anyhow::Result<()> {
     stake_address_to_num.dump_to_file(config.staking_creds_mapping)?;
     policy_id_to_num.dump_to_file(config.policy_mapping)?;
     asset_name_to_num.dump_to_file(config.asset_name_mapping)?;
-    dump_hashmap_to_file(&address_to_mapping, config.address_to_mapping)?;
     dump_hashset_to_file(&banned_addresses, config.banned_addresses)?;
 
     tracing::info!("Dumping finished, cleaning events");
@@ -381,22 +405,22 @@ fn clean_events(
                     None
                 }
             }
-            TxEvent::Full { mut to, fee, from } => {
+            TxEvent::Full { to, fee, from } => {
                 if from
                     .iter()
                     .any(|input| input.is_byron() || input.is_banned(&banned_addresses))
                 {
-                    to = to
+                    let new_to: Vec<TxOutput> = to
                         .into_iter()
                         .filter(|output| !output.is_byron() && !output.is_banned(&banned_addresses))
                         .collect();
-                    if !to.is_empty() {
-                        Some(TxEvent::Partial { to })
+                    if !new_to.is_empty() {
+                        Some(TxEvent::Partial { to: new_to })
                     } else {
                         None
                     }
                 } else {
-                    to = to
+                    let new_to: Vec<TxOutput> = to
                         .into_iter()
                         .map(|mut output| {
                             if output.is_banned(&banned_addresses) {
@@ -405,7 +429,11 @@ fn clean_events(
                             output
                         })
                         .collect();
-                    Some(TxEvent::Full { to, fee, from })
+                    Some(TxEvent::Full {
+                        to: new_to,
+                        fee,
+                        from,
+                    })
                 }
             }
         };
@@ -432,6 +460,7 @@ fn get_input_intents(
     // try to parse input addresses and put in the set
     let mut parsed_inputs = Vec::new();
     let mut inputs_pointers = HashSet::<(String, u64)>::new();
+    let mut seen_tx_ids = Vec::new();
 
     let mut duplicated_pointers_found = false;
 
@@ -477,13 +506,16 @@ fn get_input_intents(
             has_byron_inputs = true; // might be byron address or sth
         }
 
-        // remove if whole transaction is spent
+        seen_tx_ids.push(input_tx_id);
+    }
+
+    for seen_id in seen_tx_ids {
         if previous_outputs
-            .get(&input_tx_id)
+            .get(&seen_id)
             .map(|outputs| outputs.is_empty())
             .unwrap_or(false)
         {
-            previous_outputs.remove(&input_tx_id);
+            previous_outputs.remove(&seen_id);
         }
     }
 
@@ -508,7 +540,6 @@ fn get_output_intents(
     stake_address_mapping: &mut DataMapper<StakeCredential>,
     policy_to_num: &mut DataMapper<PolicyID>,
     asset_name_to_num: &mut DataMapper<String>,
-    address_to_num: &mut HashMap<String, (u64, Option<u64>)>,
 ) -> anyhow::Result<Vec<TxOutput>> {
     let mut parsed_outputs = Vec::new();
     for output_index in 0..outputs.len() {
@@ -525,12 +556,6 @@ fn get_output_intents(
                 let staking_mapping = address
                     .staking_cred()
                     .map(|staking| stake_address_mapping.add_if_not_presented(staking));
-                address_to_num.insert(
-                    address
-                        .to_bech32(None)
-                        .map_err(|err| anyhow!("Can't convert address to bech32: {:?}", err))?,
-                    (payment_mapping, staking_mapping),
-                );
                 Some((payment_mapping, staking_mapping))
             }
         };
@@ -547,15 +572,17 @@ fn get_output_intents(
                     let asset_names = assets_by_policy_id.keys();
                     for asset_name_id in 0..asset_names.len() {
                         let asset_name = asset_names.get(asset_name_id);
-                        let value = assets_by_policy_id.get(&asset_name);
-                        if let Some(value) = value {
+                        let asset_value = assets_by_policy_id.get(&asset_name);
+                        if let Some(asset_value) = asset_value {
                             let policy_mapping =
                                 policy_to_num.add_if_not_presented(policy_id.clone());
                             let asset_name_mapping = asset_name_to_num
                                 .add_if_not_presented(hex::encode(asset_name.name()));
                             assets.push(TxAsset {
                                 asset_id: (policy_mapping, asset_name_mapping),
-                                value: dcspark_core::Value::<Regulated>::from(u64::from(value)),
+                                value: dcspark_core::Value::<Regulated>::from(u64::from(
+                                    asset_value,
+                                )),
                             })
                         }
                     }

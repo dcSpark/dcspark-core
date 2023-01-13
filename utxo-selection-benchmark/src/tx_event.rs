@@ -100,8 +100,8 @@ pub enum TxEvent {
 
 #[cfg(test)]
 mod tests {
-    use dcspark_core::Address;
     use crate::tx_event::{address_from_pair, pair_from_address};
+    use dcspark_core::Address;
 
     #[test]
     fn addr_test() {

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use crate::tx_event::{address_from_pair, pair_from_address, TxEvent, TxOutput};
 use anyhow::Context;
 use clap::Parser;
-use dcspark_core::tx::{TransactionAsset, TransactionId, UTxODetails, UtxoPointer};
+use dcspark_core::tx::{TransactionAsset, TransactionId, UTxOBuilder, UTxODetails, UtxoPointer};
 use dcspark_core::{Address, AssetName, Balance, OutputIndex, PolicyId, Regulated, TokenId, Value};
 use itertools::Itertools;
 use serde::Deserialize;
@@ -15,7 +15,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::sync::Arc;
 use tracing_subscriber::prelude::*;
 use utxo_selection::{
-    InputOutputSetup, InputSelectionAlgorithm, TransactionFeeEstimator, UTxOBuilder,
+    InputOutputSetup, InputSelectionAlgorithm, TransactionFeeEstimator,
 };
 
 /* we don't take txs:
@@ -57,12 +57,10 @@ where
 {
     let mut staking_key_balance_computed =
         HashMap::<u64, HashMap<TokenId, Balance<Regulated>>>::new();
-    let mut staking_key_fee_computed =
-        HashMap::<u64, Value::<Regulated>>::new();
+    let mut staking_key_fee_computed = HashMap::<u64, Value<Regulated>>::new();
     let mut staking_key_balance_actual =
         HashMap::<u64, HashMap<TokenId, Balance<Regulated>>>::new();
-    let mut staking_key_fee_actual =
-        HashMap::<u64, Value::<Regulated>>::new();
+    let mut staking_key_fee_actual = HashMap::<u64, Value<Regulated>>::new();
 
     // staking key -> payment key -> utxos
     let mut address_computed_utxos_by_stake_key =
@@ -82,11 +80,11 @@ where
                 let mut input_value = Value::zero();
                 let mut output_value = Value::zero();
                 for to in to.iter() {
-                    input_value += &to.value;
+                    output_value += &to.value;
                 }
-                input_value += &fee;
+                output_value += &fee;
                 for from in from.iter() {
-                    output_value += &from.value;
+                    input_value += &from.value;
                 }
 
                 let stake_key = is_supported_for_selection(&from);
@@ -213,8 +211,14 @@ where
                 let mut select_result = match select_result {
                     Ok(r) => r,
                     Err(err) => {
-                        let computed_balance = staking_key_balance_computed.get(&stake_key).map(|map| map.get(&TokenId::MAIN)).flatten();
-                        let actual_balance = staking_key_balance_actual.get(&stake_key).map(|map| map.get(&TokenId::MAIN)).flatten();
+                        let computed_balance = staking_key_balance_computed
+                            .get(&stake_key)
+                            .map(|map| map.get(&TokenId::MAIN))
+                            .flatten();
+                        let actual_balance = staking_key_balance_actual
+                            .get(&stake_key)
+                            .map(|map| map.get(&TokenId::MAIN))
+                            .flatten();
                         let tried_to_send = fixed_outputs;
                         tracing::debug!(
                             "Can't select inputs for {} address using provided algo, actual: {:?}, computed: {:?}, outputs: {:?}, tx_number: {}, err: {:?}",
@@ -462,7 +466,7 @@ fn print_computed_balance(
     let keys = staking_key_balance_computed.iter();
 
     let mut better_than_actual: u64 = 0;
-    let mut same_as_actual: u64 = 0;
+    let mut not_worse_than_actual: u64 = 0;
     let mut worse_than_actual: u64 = 0;
 
     let mut non_checkable: u64 = 0;
@@ -528,8 +532,8 @@ fn print_computed_balance(
             better_than_actual += 1;
         } else if better_than_actual_element_wise.iter().all(|b| *b == -1) {
             worse_than_actual += 1;
-        } else if better_than_actual_element_wise.iter().all(|b| *b == 0) {
-            same_as_actual += 1;
+        } else if better_than_actual_element_wise.iter().all(|b| *b >= 0) {
+            not_worse_than_actual += 1;
         } else {
             non_checkable += 1;
         }
@@ -537,7 +541,7 @@ fn print_computed_balance(
 
     output_balance_short
         .write_all(format!("better than actual: {:?}\n", better_than_actual).as_bytes())?;
-    output_balance_short.write_all(format!("same as actual: {:?}\n", same_as_actual).as_bytes())?;
+    output_balance_short.write_all(format!("not worse as actual: {:?}\n", not_worse_than_actual).as_bytes())?;
     output_balance_short
         .write_all(format!("worse than actual: {:?}\n", worse_than_actual).as_bytes())?;
     output_balance_short.write_all(format!("can't compare: {:?}\n", non_checkable).as_bytes())?;
@@ -754,7 +758,10 @@ fn recount_available_inputs(
                 .or_default() -= &token.quantity;
         }
 
-        current_stake_key_utxos.entry(payment).or_default().retain_mut(|elem| elem.pointer != chosen_input.pointer);
+        current_stake_key_utxos
+            .entry(payment)
+            .or_default()
+            .retain_mut(|elem| elem.pointer != chosen_input.pointer);
     }
 }
 

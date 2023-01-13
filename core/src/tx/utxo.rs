@@ -45,3 +45,20 @@ impl From<InputBuilderResult> for UTxODetails {
         todo!()
     }
 }
+
+#[derive(Clone, Debug)]
+pub struct UTxOBuilder {
+    pub address: Address,
+    pub value: Value<Regulated>,
+    pub assets: Vec<TransactionAsset>,
+}
+
+impl UTxOBuilder {
+    pub fn new(address: Address, value: Value<Regulated>, assets: Vec<TransactionAsset>) -> Self {
+        Self {
+            address,
+            value,
+            assets,
+        }
+    }
+}

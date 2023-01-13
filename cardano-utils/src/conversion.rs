@@ -1,10 +1,66 @@
 use anyhow::anyhow;
 use cardano_multiplatform_lib::ledger::common::value::{BigNum, Coin};
-use cardano_multiplatform_lib::{MultiAsset, PolicyID};
-use dcspark_core::tx::TransactionAsset;
-use dcspark_core::{AssetName, PolicyId, Regulated, TokenId, Value};
+use cardano_multiplatform_lib::{MultiAsset, PolicyID, TransactionInput, TransactionOutput};
+use dcspark_core::tx::{TransactionAsset, TransactionId, UTxOBuilder, UTxODetails, UtxoPointer};
+use dcspark_core::{Address, AssetName, OutputIndex, PolicyId, Regulated, TokenId, Value};
 use deps::bigdecimal::ToPrimitive;
 use std::collections::HashMap;
+use std::sync::Arc;
+use cardano_multiplatform_lib::builders::input_builder::{InputBuilderResult, SingleInputBuilder};
+use cardano_multiplatform_lib::crypto::TransactionHash;
+
+pub fn input_builder_result_to_input(input: InputBuilderResult) -> anyhow::Result<UTxODetails> {
+    let (value, tokens) = csl_value_to_tokens(&input.utxo_info.amount())?;
+    Ok(UTxODetails {
+        pointer: UtxoPointer { transaction_id: TransactionId::new(input.input.transaction_id().to_string()), output_index: OutputIndex::new(u64::from(input.input.index())) },
+        address: Address::new(input.utxo_info.address().to_bech32(None).map_err(|err| anyhow!("can't convert address {}", err))?),
+        value,
+        assets: tokens.values().cloned().collect::<Vec<_>>(),
+        metadata: Arc::new(Default::default())
+    })
+}
+
+pub fn output_to_utxo_builder(output: TransactionOutput) -> anyhow::Result<UTxOBuilder> {
+    let (value, tokens) = csl_value_to_tokens(&output.amount())?;
+    Ok(UTxOBuilder {
+        address: Address::new(output.address().to_bech32(None).map_err(|err| anyhow!("can't convert address {}", err))?),
+        value,
+        assets: tokens.values().cloned().collect::<Vec<_>>(),
+    })
+}
+
+pub fn input_to_input_builder_result(input: UTxODetails) -> anyhow::Result<InputBuilderResult> {
+    let transaction_id = TransactionHash::from_hex(input.pointer.transaction_id.as_ref()).map_err(|err| anyhow!("can't convert input during hash conversion: {}", err))?;
+    let index = BigNum::from(u64::from(input.pointer.output_index));
+
+    let address = cardano_multiplatform_lib::address::Address::from_bech32(input.address.as_ref()).map_err(|err| anyhow!("can't convert input during address conversion: {}", err))?;
+    let mut assets_map = HashMap::new();
+    input.assets.into_iter().for_each(|asset| {
+        assets_map.insert(asset.fingerprint.clone(), asset);
+    });
+    let value = tokens_to_csl_value(&input.value, &assets_map).map_err(|err| anyhow!("can't convert value: {}", err))?;
+
+    let builder = SingleInputBuilder::new(
+        &TransactionInput::new(&transaction_id, &index),
+        &TransactionOutput::new(
+           &address,
+            &value,
+        )
+    );
+
+    builder.payment_key().map_err(|err| anyhow!("can't convert input: {}", err))
+}
+
+pub fn output_to_output_builder(output: UTxOBuilder) -> anyhow::Result<TransactionOutput> {
+    let address = cardano_multiplatform_lib::address::Address::from_bech32(output.address.as_ref()).map_err(|err| anyhow!("can't convert output: {}", err))?;
+    let mut assets_map = HashMap::new();
+    output.assets.into_iter().for_each(|asset| {
+        assets_map.insert(asset.fingerprint.clone(), asset);
+    });
+    let value = tokens_to_csl_value(&output.value, &assets_map).map_err(|err| anyhow!("can't convert value: {}", err))?;
+
+    Ok(TransactionOutput::new(&address, &value))
+}
 
 pub fn value_to_csl_coin(value: &Value<Regulated>) -> anyhow::Result<Coin> {
     Ok(

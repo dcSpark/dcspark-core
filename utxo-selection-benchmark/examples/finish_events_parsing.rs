@@ -7,6 +7,8 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
+use cardano_multiplatform_lib::crypto::{Ed25519KeyHash, ScriptHash};
+use pallas_addresses::{ShelleyDelegationPart, ShelleyPaymentPart};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use utxo_selection_benchmark::mapper::DataMapper;
@@ -27,8 +29,6 @@ pub struct Config {
     payment_creds_mapping_output: PathBuf,
     staking_creds_mapping: PathBuf,
     staking_creds_mapping_output: PathBuf,
-    address_to_mapping: PathBuf,
-    address_to_mapping_output: PathBuf,
     banned_addresses: PathBuf,
     banned_addresses_output: PathBuf,
 }
@@ -94,34 +94,53 @@ async fn _main() -> anyhow::Result<()> {
         read_hashset_from_file(config.banned_addresses)?;
     tracing::info!("banned addresses loaded");
 
-    let mut address_to_mapping: HashMap<String, (u64, Option<u64>)> =
-        read_hashmap_from_file(config.address_to_mapping)?;
-    tracing::info!("address mapping loaded");
-
     tracing::info!("successfully loaded mappings");
 
     let unparsed_addresses_file_lines = BufReader::new(unparsed_addresses_file).lines();
     for line in unparsed_addresses_file_lines {
         let address = line?;
-        match cardano_multiplatform_lib::address::Address::from_bech32(address.as_str()) {
-            Ok(address) => match address.payment_cred() {
-                None => {
-                    // this is byron output
-                }
-                Some(payment) => {
-                    let payment_mapping = payment_address_to_num.add_if_not_presented(payment);
-                    let staking_mapping = address
-                        .staking_cred()
-                        .map(|staking| stake_address_to_num.add_if_not_presented(staking));
-                    address_to_mapping.insert(
-                        address
-                            .to_bech32(None)
-                            .map_err(|err| anyhow!("Can't convert address to bech32: {:?}", err))?,
-                        (payment_mapping, staking_mapping),
-                    );
-                    banned_addresses.insert((payment_mapping, staking_mapping));
-                }
-            },
+
+        match pallas_addresses::Address::from_bech32(address.as_str()) {
+            Ok(address) => {
+                let (payment, staking) = match address {
+                    pallas_addresses::Address::Byron(_) => {
+                        /* ignore */
+                        continue;
+                    }
+                    pallas_addresses::Address::Shelley(shelley) => {
+                        let payment_cred = match shelley.payment() {
+                            ShelleyPaymentPart::Key(key) => {
+                                StakeCredential::from_keyhash(&Ed25519KeyHash::from_bytes(key.to_vec()).unwrap())
+                            }
+                            ShelleyPaymentPart::Script(script) => {
+                                StakeCredential::from_scripthash(&ScriptHash::from_bytes(script.to_vec()).unwrap())
+                            }
+                        };
+                        let staking_cred: Option<StakeCredential> = match shelley.delegation() {
+                            ShelleyDelegationPart::Null => None,
+                            ShelleyDelegationPart::Key(key) => {
+                                Some(StakeCredential::from_keyhash(&Ed25519KeyHash::from_bytes(key.to_vec()).unwrap()))
+                            }
+                            ShelleyDelegationPart::Script(script) => {
+                                Some(StakeCredential::from_scripthash(&ScriptHash::from_bytes(script.to_vec()).unwrap()))
+                            }
+                            ShelleyDelegationPart::Pointer(_) => {
+                                todo!("not supported")
+                            }
+                        };
+                        (payment_cred, staking_cred)
+                    }
+                    pallas_addresses::Address::Stake(stake) => {
+                        /* ignore */
+                        continue;
+                    }
+                };
+                let payment_mapping = payment_address_to_num.add_if_not_presented(payment);
+                let staking_mapping = staking
+                    .map(|staking| stake_address_to_num.add_if_not_presented(staking));
+                banned_addresses.insert((payment_mapping, staking_mapping));
+            }
+
             Err(err) => {
                 tracing::error!("can't parse address: {:?}, addr={:?}", err, address);
             }
@@ -132,7 +151,6 @@ async fn _main() -> anyhow::Result<()> {
 
     payment_address_to_num.dump_to_file(config.payment_creds_mapping_output)?;
     stake_address_to_num.dump_to_file(config.staking_creds_mapping_output)?;
-    dump_hashmap_to_file(&address_to_mapping, config.address_to_mapping_output)?;
     dump_hashset_to_file(&banned_addresses, config.banned_addresses_output)?;
 
     tracing::info!("Dumping finished, cleaning events");
@@ -172,22 +190,22 @@ fn clean_events(
                     None
                 }
             }
-            TxEvent::Full { mut to, fee, from } => {
+            TxEvent::Full { to, fee, from } => {
                 if from
                     .iter()
                     .any(|input| input.is_byron() || input.is_banned(&banned_addresses))
                 {
-                    to = to
+                    let new_to: Vec<TxOutput> = to
                         .into_iter()
                         .filter(|output| !output.is_byron() && !output.is_banned(&banned_addresses))
                         .collect();
-                    if !to.is_empty() {
-                        Some(TxEvent::Partial { to })
+                    if !new_to.is_empty() {
+                        Some(TxEvent::Partial { to: new_to })
                     } else {
                         None
                     }
                 } else {
-                    to = to
+                    let new_to: Vec<TxOutput> = to
                         .into_iter()
                         .map(|mut output| {
                             if output.is_banned(&banned_addresses) {
@@ -196,7 +214,11 @@ fn clean_events(
                             output
                         })
                         .collect();
-                    Some(TxEvent::Full { to, fee, from })
+                    Some(TxEvent::Full {
+                        to: new_to,
+                        fee,
+                        from,
+                    })
                 }
             }
         };

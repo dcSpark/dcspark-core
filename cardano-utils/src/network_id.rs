@@ -215,6 +215,7 @@ impl NetworkInfo {
         match self {
             Self::Mainnet | Self::Testnet => {
                 let coins_per_utxo_word = BigNum::from_str("34482").unwrap();
+                let coins_per_utxo_byte = BigNum::from_str("4310").unwrap();
                 let pool_deposit = BigNum::from_str("500000000").unwrap();
                 let key_deposit = BigNum::from_str("2000000").unwrap();
                 let max_value_size = 5000;
@@ -224,6 +225,7 @@ impl NetworkInfo {
                 TransactionBuilderConfigBuilder::new()
                     .fee_algo(&linear_fee)
                     .coins_per_utxo_word(&coins_per_utxo_word)
+                    .coins_per_utxo_byte(&coins_per_utxo_byte)
                     .pool_deposit(&pool_deposit)
                     .key_deposit(&key_deposit)
                     .max_value_size(max_value_size)

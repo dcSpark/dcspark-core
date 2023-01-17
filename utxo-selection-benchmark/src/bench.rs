@@ -45,6 +45,7 @@ pub fn run_algorithm_benchmark<
     output_balance: PathBuf,
     output_balance_short: PathBuf,
     allow_balance_change: bool,
+    print_utxo_sets: Option<PathBuf>,
 ) -> anyhow::Result<()>
 where
     EstimatorCreator: Fn() -> anyhow::Result<Estimator>,
@@ -420,6 +421,29 @@ where
         output_balance_short,
     )?;
 
+    if let Some(path) = print_utxo_sets {
+        print_utxos(address_computed_utxos_by_stake_key, path)?;
+    }
+
+    Ok(())
+}
+
+fn print_utxos(
+    address_computed_utxos_by_stake_key: HashMap<u64, HashMap<u64, Vec<UTxODetails>>>,
+    path: PathBuf,
+) -> anyhow::Result<()> {
+    let mut file = File::create(path)?;
+    for (stake_key, utxos) in address_computed_utxos_by_stake_key.iter() {
+        for (payment_key, utxos) in utxos.iter() {
+            file.write_all(
+                format!(
+                    "stake: {:?}, payment: {:?}, utxos: {:?}\n",
+                    stake_key, payment_key, utxos
+                )
+                .as_bytes(),
+            )?;
+        }
+    }
     Ok(())
 }
 

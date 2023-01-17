@@ -19,6 +19,8 @@ pub struct Config {
     output_discarded: PathBuf,
     output_balance: PathBuf,
     output_balance_short: PathBuf,
+    #[serde(default)]
+    utxos_path: Option<PathBuf>,
 }
 
 #[derive(Parser, Debug)]
@@ -81,6 +83,7 @@ async fn _main() -> anyhow::Result<()> {
         config.output_balance,
         config.output_balance_short,
         false,
+        config.utxos_path,
     )?;
     Ok(())
 }

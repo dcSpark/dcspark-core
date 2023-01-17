@@ -4,10 +4,10 @@ use anyhow::Context;
 use cardano_utils::multisig_plan::MultisigPlan;
 use clap::Parser;
 use serde::Deserialize;
-use std::cmp::min;
-use std::collections::{HashMap, HashSet, VecDeque};
+
+
 use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
+
 use tracing_subscriber::prelude::*;
 use utxo_selection::algorithms::{ThermostatAlgoConfig, ThermostatFeeEstimator};
 use utxo_selection_benchmark::bench::run_algorithm_benchmark;

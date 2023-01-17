@@ -1,12 +1,12 @@
-use std::cmp::{max, min};
-use std::marker::PhantomData;
+
+
 use anyhow::anyhow;
-use cardano_multiplatform_lib::builders::input_builder::{InputBuilderResult, SingleInputBuilder};
-use cardano_multiplatform_lib::builders::output_builder::{SingleOutputBuilderResult, TransactionOutputBuilder};
+use cardano_multiplatform_lib::builders::input_builder::{InputBuilderResult};
+use cardano_multiplatform_lib::builders::output_builder::{SingleOutputBuilderResult};
 use cardano_multiplatform_lib::builders::tx_builder::TransactionBuilder;
 use cardano_multiplatform_lib::TransactionOutput;
 use dcspark_core::{Regulated, Value};
-use dcspark_core::tx::UTxODetails;
+
 use crate::{TransactionFeeEstimator};
 
 pub struct CmlFeeEstimator {
@@ -47,7 +47,7 @@ impl TransactionFeeEstimator for CmlFeeEstimator {
 
     fn fee_for_output(&self, output: &Self::OutputUtxo) -> anyhow::Result<Value<Regulated>> {
         let mut builder = self.builder.clone();
-        let output = output_to_builder_result(&output);
+        let output = output_to_builder_result(output);
         println!("{:?}",output.output().amount().coin());
         builder.add_output(&output).map_err(|err|anyhow!("Can't add output: {}", err))?;
         let fee = builder.min_fee(true).map_err(|err| anyhow!("can't calculate fees: {}", err))?;
@@ -73,7 +73,7 @@ impl TransactionFeeEstimator for CmlFeeEstimator {
 }
 
 fn output_to_builder_result(output: &TransactionOutput) -> SingleOutputBuilderResult {
-    SingleOutputBuilderResult::new(&output)
+    SingleOutputBuilderResult::new(output)
 }
 
 
@@ -85,7 +85,7 @@ mod tests {
     use cardano_multiplatform_lib::ledger::common::value::BigNum;
     use cardano_multiplatform_lib::plutus::ExUnitPrices;
     use cardano_multiplatform_lib::UnitInterval;
-    use cardano_utils::network_id::NetworkInfo;
+    
     use dcspark_core::{Address, Value};
     use dcspark_core::tx::{TransactionId, UTxOBuilder, UTxODetails, UtxoPointer};
     use crate::algorithms::{CmlFeeEstimator, Thermostat, ThermostatAlgoConfig};

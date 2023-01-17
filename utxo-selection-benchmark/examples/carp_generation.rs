@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use anyhow::{anyhow, Context};
 use cardano_multiplatform_lib::address::StakeCredential;
-use cardano_multiplatform_lib::crypto::TransactionHash;
-use cardano_multiplatform_lib::ledger::common::value::BigNum;
+
+
 use cardano_multiplatform_lib::PolicyID;
 use clap::Parser;
 use dcspark_core::Regulated;
@@ -15,13 +15,13 @@ use entity::{
 };
 use serde::Deserialize;
 use std::cmp::min;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use tracing_subscriber::prelude::*;
 use utxo_selection_benchmark::mapper::DataMapper;
 use utxo_selection_benchmark::tx_event::{TxAsset, TxEvent, TxOutput};
-use utxo_selection_benchmark::utils::{dump_hashmap_to_file, dump_hashset_to_file};
+use utxo_selection_benchmark::utils::{dump_hashset_to_file};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -45,7 +45,6 @@ pub struct Config {
     staking_creds_mapping: PathBuf,
     policy_mapping: PathBuf,
     asset_name_mapping: PathBuf,
-    address_to_mapping: PathBuf,
     banned_addresses: PathBuf,
     events_output_path: PathBuf,
     cleaned_events_output_path: PathBuf,
@@ -295,12 +294,12 @@ async fn _main() -> anyhow::Result<()> {
                                     input_value += &from.value;
                                 }
                                 if input_value != output_value {
-                                    for input in from.into_iter() {
+                                    for input in from.iter() {
                                         if let Some(addr) = input.address {
                                             banned_addresses.insert(addr);
                                         }
                                     }
-                                    for output in to.into_iter() {
+                                    for output in to.iter() {
                                         if let Some(addr) = output.address {
                                             banned_addresses.insert(addr);
                                         }
@@ -397,7 +396,7 @@ fn clean_events(
             TxEvent::Partial { to } => {
                 let to: Vec<TxOutput> = to
                     .into_iter()
-                    .filter(|output| !output.is_byron() && !output.is_banned(&banned_addresses))
+                    .filter(|output| !output.is_byron() && !output.is_banned(banned_addresses))
                     .collect();
                 if !to.is_empty() {
                     Some(TxEvent::Partial { to })
@@ -408,11 +407,11 @@ fn clean_events(
             TxEvent::Full { to, fee, from } => {
                 if from
                     .iter()
-                    .any(|input| input.is_byron() || input.is_banned(&banned_addresses))
+                    .any(|input| input.is_byron() || input.is_banned(banned_addresses))
                 {
                     let new_to: Vec<TxOutput> = to
                         .into_iter()
-                        .filter(|output| !output.is_byron() && !output.is_banned(&banned_addresses))
+                        .filter(|output| !output.is_byron() && !output.is_banned(banned_addresses))
                         .collect();
                     if !new_to.is_empty() {
                         Some(TxEvent::Partial { to: new_to })
@@ -423,7 +422,7 @@ fn clean_events(
                     let new_to: Vec<TxOutput> = to
                         .into_iter()
                         .map(|mut output| {
-                            if output.is_banned(&banned_addresses) {
+                            if output.is_banned(banned_addresses) {
                                 output.address = None;
                             }
                             output
@@ -473,10 +472,10 @@ fn get_input_intents(
         if let Some(outputs) = &mut previous_outputs.get_mut(&input_tx_id) {
             // we remove the spent input from the list
             if let Some(output) = outputs.remove(&input_tx_index) {
-                inputs_pointers.insert((input_tx_id.clone(), input_tx_index.clone()));
+                inputs_pointers.insert((input_tx_id.clone(), input_tx_index));
                 parsed_inputs.push(output);
             } else {
-                if inputs_pointers.contains(&(input_tx_id.clone(), input_tx_index.clone())) {
+                if inputs_pointers.contains(&(input_tx_id.clone(), input_tx_index)) {
                     duplicated_pointers_found = true;
                     tracing::info!("Found tx using same output as an input multiple times: {:?}@{:?}, current tx: {:?}, id: {:?}",
                         input_tx_id,
@@ -522,7 +521,7 @@ fn get_input_intents(
     let has_banned_addresses = parsed_inputs.iter().any(|input| {
         input.address.is_none()
             || (input.address.is_some()
-                && banned_addresses.contains(&input.address.clone().unwrap()))
+                && banned_addresses.contains(&input.address.unwrap()))
     });
 
     Ok((
@@ -533,7 +532,7 @@ fn get_input_intents(
 }
 
 fn get_output_intents(
-    tx_hash: &String,
+    tx_hash: &str,
     outputs: cardano_multiplatform_lib::TransactionOutputs,
     previous_outputs: &mut HashMap<String, HashMap<u64, TxOutput>>,
     payment_address_mapping: &mut DataMapper<StakeCredential>,
@@ -597,7 +596,7 @@ fn get_output_intents(
         })
     }
 
-    let entry = previous_outputs.entry(tx_hash.clone()).or_default();
+    let entry = previous_outputs.entry(tx_hash.to_owned()).or_default();
     for (output_index, parsed_output) in parsed_outputs.iter().enumerate() {
         entry.insert(output_index as u64, parsed_output.clone());
     }
@@ -606,7 +605,7 @@ fn get_output_intents(
 }
 
 fn ban_addresses_for_events(
-    events: &Vec<TxOutput>,
+    events: &[TxOutput],
     banned_addresses: &mut HashSet<(u64, Option<u64>)>,
 ) -> anyhow::Result<()> {
     for event in events.iter() {

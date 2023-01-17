@@ -1,7 +1,7 @@
 use dcspark_core::tx::TransactionAsset;
 use dcspark_core::{Address, AssetName, PolicyId, Regulated, TokenId};
 use serde::{Deserialize, Serialize};
-use serde_json::from_str;
+
 use std::collections::HashSet;
 use std::str::FromStr;
 
@@ -19,7 +19,7 @@ impl From<TxAsset> for TransactionAsset {
             policy_id: PolicyId::new(asset.asset_id.0.to_string()),
             asset_name: AssetName::new(asset.asset_id.1.to_string()),
             fingerprint: TokenId::new(format!("{}_{}", asset.asset_id.0, asset.asset_id.1)),
-            quantity: asset.value.clone(),
+            quantity: asset.value,
         }
     }
 }
@@ -37,14 +37,13 @@ pub fn pair_from_address(address: Address) -> Option<(u64, Option<u64>)> {
         return None;
     }
     let split = address
-        .split("_")
+        .split('_')
         .into_iter()
         .map(|s| s.to_string())
         .collect::<Vec<_>>();
     let payment = match split
         .get(0)
-        .map(|payment| u64::from_str(payment.as_str()).ok())
-        .flatten()
+        .and_then(|payment| u64::from_str(payment.as_str()).ok())
     {
         None => return None,
         Some(payment) => payment,
@@ -107,7 +106,7 @@ mod tests {
     fn addr_test() {
         let addresses = vec![(0, None), (1, Some(23))];
         for addr in addresses {
-            let one = address_from_pair(addr.clone());
+            let one = address_from_pair(addr);
             let two = pair_from_address(one).unwrap();
             assert_eq!(addr.0, two.0, "{:?}", addr);
             assert_eq!(addr.1.is_none(), two.1.is_none(), "{:?}", addr);

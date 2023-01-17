@@ -29,7 +29,7 @@ impl<T: Hash + Eq + Serialize + DeserializeOwned> DataMapper<T> {
             Entry::Occupied(entry) => *entry.get(),
             Entry::Vacant(entry) => {
                 let value = self.current_mapping_index;
-                entry.insert(value.clone());
+                entry.insert(value);
                 self.current_mapping_index += 1;
                 value
             }
@@ -68,7 +68,7 @@ impl<T: Hash + Eq + Serialize + DeserializeOwned> DataMapper<T> {
         let mut max_index: u64 = 0;
         for (num, line) in lines.enumerate() {
             let unwrapped = line?;
-            let mut split = unwrapped.split(":");
+            let mut split = unwrapped.split(':');
             let data: T = if let Some(data) = split.next() {
                 serde_json::from_str(data).context(format!("Key at line: {}", num + 2))?
             } else {

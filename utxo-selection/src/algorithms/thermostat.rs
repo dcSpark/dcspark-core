@@ -814,7 +814,7 @@ mod tests {
         }
         *balance_by_token.entry(TokenId::MAIN).or_default() -= &result.fee;
 
-        for (token, value) in balance_by_token.into_iter() {
+        for (_token, value) in balance_by_token.into_iter() {
             assert_eq!(value, Value::zero());
         }
     }

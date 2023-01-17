@@ -1,19 +1,18 @@
 use std::path::PathBuf;
 
 use crate::tx_event::{address_from_pair, pair_from_address, TxEvent, TxOutput};
-use anyhow::Context;
-use clap::Parser;
+
+
 use dcspark_core::tx::{TransactionAsset, TransactionId, UTxOBuilder, UTxODetails, UtxoPointer};
-use dcspark_core::{Address, AssetName, Balance, OutputIndex, PolicyId, Regulated, TokenId, Value};
+use dcspark_core::{Address, Balance, OutputIndex, Regulated, TokenId, Value};
 use itertools::Itertools;
-use serde::Deserialize;
-use std::cmp::min;
+
+
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::sync::Arc;
-use tracing_subscriber::prelude::*;
 use utxo_selection::{
     InputOutputSetup, InputSelectionAlgorithm, TransactionFeeEstimator,
 };
@@ -23,7 +22,7 @@ use utxo_selection::{
  * - with more than one staking key in inputs
  * - with no staking key in inputs
  */
-fn is_supported_for_selection(inputs: &Vec<TxOutput>) -> Option<u64> {
+fn is_supported_for_selection(inputs: &[TxOutput]) -> Option<u64> {
     if inputs.iter().any(|input| input.address.is_none())
         || inputs.iter().map(|input| input.address).unique().count() != 1
     {
@@ -31,11 +30,10 @@ fn is_supported_for_selection(inputs: &Vec<TxOutput>) -> Option<u64> {
     }
     return inputs
         .first()
-        .map(|input| input.address.map(|(payment, stake)| stake).flatten())
-        .flatten();
+        .and_then(|input| input.address.and_then(|(_payment, stake)| stake));
 }
 
-#[allow(unused)]
+#[allow(clippy::too_many_arguments)]
 pub fn run_algorithm_benchmark<
     Estimator: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>,
     Algo: InputSelectionAlgorithm<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>,
@@ -91,9 +89,7 @@ where
                 if stake_key.is_none() || input_value != output_value {
                     let stake_keys_to_discard: Vec<_> = from
                         .iter()
-                        .map(|input| input.address.map(|addr| addr.1).flatten())
-                        .filter(|input| input.is_some())
-                        .map(|input| input.unwrap())
+                        .filter_map(|input| input.address.and_then(|addr| addr.1))
                         .collect();
                     for key in stake_keys_to_discard.into_iter() {
                         discarded_staking_keys.insert(key);
@@ -190,12 +186,12 @@ where
                     }
                     Some(utxos) => utxos
                         .iter()
-                        .flat_map(|(payment_key, utxos)| utxos.clone())
+                        .flat_map(|(_, utxos)| utxos.clone())
                         .collect::<Vec<_>>(),
                 };
 
                 algorithm.set_available_inputs(computed_utxos)?;
-                let mut select_result = algorithm.select_inputs(
+                let select_result = algorithm.select_inputs(
                     &mut estimate,
                     InputOutputSetup {
                         input_balance: Default::default(),
@@ -208,17 +204,15 @@ where
                     },
                 );
 
-                let mut select_result = match select_result {
+                let select_result = match select_result {
                     Ok(r) => r,
                     Err(err) => {
                         let computed_balance = staking_key_balance_computed
                             .get(&stake_key)
-                            .map(|map| map.get(&TokenId::MAIN))
-                            .flatten();
+                            .and_then(|map| map.get(&TokenId::MAIN));
                         let actual_balance = staking_key_balance_actual
                             .get(&stake_key)
-                            .map(|map| map.get(&TokenId::MAIN))
-                            .flatten();
+                            .and_then(|map| map.get(&TokenId::MAIN));
                         let tried_to_send = fixed_outputs;
                         tracing::debug!(
                             "Can't select inputs for {} address using provided algo, actual: {:?}, computed: {:?}, outputs: {:?}, tx_number: {}, err: {:?}",
@@ -241,7 +235,7 @@ where
                     }
                 };
 
-                let mut computed_available_utxos = algorithm.available_inputs();
+                let computed_available_utxos = algorithm.available_inputs();
                 let mut changes = select_result.changes.clone();
                 let mut selected_inputs = select_result.chosen_inputs.clone();
                 let mut fee_computed = select_result.fee.clone();
@@ -257,7 +251,7 @@ where
                     let mut fixed_outputs = select_result.fixed_outputs.clone();
                     fixed_outputs.append(&mut changes.clone());
 
-                    let mut balance_change_result = balance_change_algo.select_inputs(
+                    let balance_change_result = balance_change_algo.select_inputs(
                         &mut estimate,
                         InputOutputSetup {
                             input_balance: select_result.input_balance,
@@ -312,7 +306,6 @@ where
                         continue;
                     }
 
-                    computed_available_utxos = balance_change_algo.available_inputs();
                     // changes from first stage + changes from balance + original fixed outputs = all outputs
                     changes.append(&mut balance_change_result.changes);
                     selected_inputs.append(&mut balance_change_result.chosen_inputs);
@@ -351,10 +344,6 @@ where
                 }
                 assert_eq!(inputs_value, Value::zero());
 
-                // tracing::info!("current balance: {:?}", staking_key_balance_computed.get(&stake_key));
-                // tracing::info!("actual balance: {:?}", staking_key_balance_actual.get(&stake_key));
-                //
-                // tracing::info!("inputs: {:?}", selected_inputs);
                 recount_available_inputs(
                     selected_inputs,
                     stake_key,
@@ -362,13 +351,10 @@ where
                     &mut staking_key_balance_computed,
                 );
 
-                // tracing::info!("current balance: {:?}", staking_key_balance_computed.get(&stake_key));
-
                 let outputs: Vec<_> = fixed_outputs
                     .into_iter()
                     .chain(changes.into_iter())
                     .collect();
-                // tracing::info!("outputs: {:?}", outputs);
                 add_new_selected_outputs_to_stake_keys(
                     tx_number,
                     outputs,
@@ -377,8 +363,6 @@ where
                     &insolvent_staking_keys,
                     &discarded_staking_keys,
                 );
-                // tracing::info!("current balance: {:?}", staking_key_balance_computed.get(&stake_key));
-                // tracing::info!("actual balance: {:?}", staking_key_balance_actual.get(&stake_key));
 
                 add_to_actual_balance(
                     &to,
@@ -386,10 +370,8 @@ where
                     &insolvent_staking_keys,
                     &discarded_staking_keys,
                 );
-                // tracing::info!("actual balance: {:?}", staking_key_balance_actual.get(&stake_key));
 
                 subtract_from_actual_balance(stake_key, &from, &mut staking_key_balance_actual);
-                // tracing::info!("actual balance: {:?}", staking_key_balance_actual.get(&stake_key));
 
                 *staking_key_fee_actual.entry(stake_key).or_default() += &fee;
                 *staking_key_fee_computed.entry(stake_key).or_default() += &fee_computed;
@@ -565,27 +547,27 @@ fn handle_partial_parsed(
     add_to_actual_balance(
         &to,
         staking_key_balance_actual,
-        &insolvent_staking_keys,
-        &discarded_staking_keys,
+        insolvent_staking_keys,
+        discarded_staking_keys,
     );
     add_untouched_outputs_to_stake_keys(
         tx_number,
         to,
         address_computed_utxos_by_stake_key,
         staking_key_balance_computed,
-        &insolvent_staking_keys,
-        &discarded_staking_keys,
+        insolvent_staking_keys,
+        discarded_staking_keys,
     );
 }
 
 fn add_to_actual_balance(
-    to: &Vec<TxOutput>,
+    to: &[TxOutput],
     staking_key_balance_actual: &mut HashMap<u64, HashMap<TokenId, Balance<Regulated>>>,
     insolvent_keys: &HashSet<u64>,
     discarded_keys: &HashSet<u64>,
 ) {
     for output in to.iter() {
-        let (_, staking) = match output.address.clone() {
+        let (_, staking) = match output.address {
             Some(addr) => addr,
             None => continue,
         };
@@ -599,7 +581,7 @@ fn add_to_actual_balance(
         }
 
         let balance = staking_key_balance_actual
-            .entry(staking.clone())
+            .entry(staking)
             .or_default();
         *balance.entry(TokenId::MAIN).or_default() += &output.value;
         for token in output.assets.iter() {
@@ -611,7 +593,7 @@ fn add_to_actual_balance(
 
 fn subtract_from_actual_balance(
     staking_key: u64,
-    from: &Vec<TxOutput>,
+    from: &[TxOutput],
     staking_key_balance_actual: &mut HashMap<u64, HashMap<TokenId, Balance<Regulated>>>,
 ) {
     let balance = staking_key_balance_actual.entry(staking_key).or_default();
@@ -648,7 +630,7 @@ fn add_new_selected_outputs_to_stake_keys(
         }
 
         let current_stake_key_utxos = address_computed_utxos_by_stake_key
-            .entry(staking.clone())
+            .entry(staking)
             .or_default();
         current_stake_key_utxos
             .entry(payment)
@@ -664,7 +646,7 @@ fn add_new_selected_outputs_to_stake_keys(
                 metadata: Arc::new(Default::default()),
             });
         let current_token_balance = staking_key_balance_computed
-            .entry(staking.clone())
+            .entry(staking)
             .or_default();
 
         *current_token_balance.entry(TokenId::MAIN).or_default() += &output.value;
@@ -705,7 +687,7 @@ fn add_untouched_outputs_to_stake_keys(
             .collect();
 
         let current_stake_key_utxos = address_computed_utxos_by_stake_key
-            .entry(staking.clone())
+            .entry(staking)
             .or_default();
         current_stake_key_utxos
             .entry(payment)
@@ -721,7 +703,7 @@ fn add_untouched_outputs_to_stake_keys(
                 metadata: Arc::new(Default::default()),
             });
         let current_token_balance = staking_key_balance_computed
-            .entry(staking.clone())
+            .entry(staking)
             .or_default();
 
         *current_token_balance.entry(TokenId::MAIN).or_default() += &output.value;
@@ -743,7 +725,7 @@ fn recount_available_inputs(
         .entry(stake_key)
         .or_default();
     let current_token_balance = staking_key_balance_computed
-        .entry(stake_key.clone())
+        .entry(stake_key)
         .or_default();
 
     for chosen_input in chosen_inputs.into_iter() {
@@ -765,30 +747,29 @@ fn recount_available_inputs(
     }
 }
 
-fn get_change_addresses(stake_key: u64, outputs: &Vec<TxOutput>) -> Vec<(u64, Option<u64>)> {
+fn get_change_addresses(stake_key: u64, outputs: &[TxOutput]) -> Vec<(u64, Option<u64>)> {
     let change_addresses: Vec<_> = outputs
         .iter()
-        .filter(|output| output.address.is_some())
-        .map(|output| output.address.unwrap())
-        .filter(|addr| addr.1.is_some() && addr.1.clone().unwrap() == stake_key)
+        .filter_map(|output| output.address)
+        .filter(|addr| addr.1.is_some() && addr.1.unwrap() == stake_key)
         .collect();
 
     change_addresses
 }
 
 fn get_non_change_outputs(
-    outputs: &Vec<TxOutput>,
-    change_addresses: &Vec<(u64, Option<u64>)>,
+    outputs: &[TxOutput],
+    change_addresses: &[(u64, Option<u64>)],
 ) -> Vec<UTxOBuilder> {
     let non_changes: Vec<_> = outputs
         .iter()
         .filter(|output| {
-            output.address.is_none() || !change_addresses.contains(&output.address.clone().unwrap())
+            output.address.is_none() || !change_addresses.contains(&output.address.unwrap())
         })
         .cloned()
         .collect();
-    let fixed_outputs = outputs_to_builders(non_changes);
-    fixed_outputs
+    
+    outputs_to_builders(non_changes)
 }
 
 fn outputs_to_builders(outputs: Vec<TxOutput>) -> Vec<UTxOBuilder> {
@@ -798,8 +779,8 @@ fn outputs_to_builders(outputs: Vec<TxOutput>) -> Vec<UTxOBuilder> {
             UTxOBuilder::new(
                 output
                     .address
-                    .map(|address| address_from_pair(address))
-                    .unwrap_or(Address::new("byron".to_string())),
+                    .map(address_from_pair)
+                    .unwrap_or_else(|| Address::new("byron".to_string())),
                 output.value.clone(),
                 output
                     .assets
@@ -813,13 +794,13 @@ fn outputs_to_builders(outputs: Vec<TxOutput>) -> Vec<UTxOBuilder> {
 
 fn choose_change_address(
     stake_key: u64,
-    from: &Vec<TxOutput>,
-    change_addresses: &Vec<(u64, Option<u64>)>,
+    from: &[TxOutput],
+    change_addresses: &[(u64, Option<u64>)],
 ) -> (u64, Option<u64>) {
     let first_from_with_stake_key = from
         .iter()
         // we always must find it
-        .find(|from| from.address.is_some() && from.address.clone().unwrap().1 == Some(stake_key))
+        .find(|from| from.address.is_some() && from.address.unwrap().1 == Some(stake_key))
         .unwrap()
         .address
         .unwrap();

@@ -58,7 +58,7 @@ pub fn read_hashmap_from_file<Key: Eq + Hash + DeserializeOwned, Value: Deserial
     let mut read: usize = 0;
     for (num, line) in lines.enumerate() {
         let unwrapped = line?;
-        let mut split = unwrapped.split(":");
+        let mut split = unwrapped.split(':');
         let key: Key = if let Some(data) = split.next() {
             serde_json::from_str(data).context(format!("Key at line: {}", num + 2))?
         } else {

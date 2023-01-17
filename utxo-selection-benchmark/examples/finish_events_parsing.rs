@@ -1,9 +1,9 @@
 use anyhow::{anyhow, Context};
-use cardano_multiplatform_lib::address::{Address, StakeCredential};
-use cardano_multiplatform_lib::error::JsError;
+use cardano_multiplatform_lib::address::{StakeCredential};
+
 use clap::Parser;
 use serde::Deserialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
@@ -14,7 +14,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use utxo_selection_benchmark::mapper::DataMapper;
 use utxo_selection_benchmark::tx_event::{TxEvent, TxOutput};
 use utxo_selection_benchmark::utils::{
-    dump_hashmap_to_file, dump_hashset_to_file, read_hashmap_from_file, read_hashset_from_file,
+    dump_hashset_to_file, read_hashset_from_file,
 };
 
 #[derive(Debug, Clone, Deserialize)]
@@ -69,14 +69,14 @@ async fn _main() -> anyhow::Result<()> {
         )
     })?;
 
-    let mut unparsed_addresses_file = if config.unparsed_transaction_addresses.exists()
+    let unparsed_addresses_file = if config.unparsed_transaction_addresses.exists()
         && config.unparsed_transaction_addresses.is_file()
     {
         File::open(config.unparsed_transaction_addresses.clone())?
     } else {
         return Err(anyhow!(
             "can't open input file: {:?}",
-            config.unparsed_transaction_addresses.clone()
+            config.unparsed_transaction_addresses
         ));
     };
 
@@ -130,7 +130,7 @@ async fn _main() -> anyhow::Result<()> {
                         };
                         (payment_cred, staking_cred)
                     }
-                    pallas_addresses::Address::Stake(stake) => {
+                    pallas_addresses::Address::Stake(_stake) => {
                         /* ignore */
                         continue;
                     }
@@ -182,7 +182,7 @@ fn clean_events(
             TxEvent::Partial { to } => {
                 let to: Vec<TxOutput> = to
                     .into_iter()
-                    .filter(|output| !output.is_byron() && !output.is_banned(&banned_addresses))
+                    .filter(|output| !output.is_byron() && !output.is_banned(banned_addresses))
                     .collect();
                 if !to.is_empty() {
                     Some(TxEvent::Partial { to })
@@ -193,11 +193,11 @@ fn clean_events(
             TxEvent::Full { to, fee, from } => {
                 if from
                     .iter()
-                    .any(|input| input.is_byron() || input.is_banned(&banned_addresses))
+                    .any(|input| input.is_byron() || input.is_banned(banned_addresses))
                 {
                     let new_to: Vec<TxOutput> = to
                         .into_iter()
-                        .filter(|output| !output.is_byron() && !output.is_banned(&banned_addresses))
+                        .filter(|output| !output.is_byron() && !output.is_banned(banned_addresses))
                         .collect();
                     if !new_to.is_empty() {
                         Some(TxEvent::Partial { to: new_to })
@@ -208,7 +208,7 @@ fn clean_events(
                     let new_to: Vec<TxOutput> = to
                         .into_iter()
                         .map(|mut output| {
-                            if output.is_banned(&banned_addresses) {
+                            if output.is_banned(banned_addresses) {
                                 output.address = None;
                             }
                             output

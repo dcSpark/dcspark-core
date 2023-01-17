@@ -36,7 +36,7 @@ impl AsRef<str> for TokenId {
     }
 }
 
-/// So, we don't have to change TokenId to Option<TokenId> in the code (except OutputTx where data arrives)
+/// So, we don't have to change TokenId to `Option<TokenId>` in the code (except OutputTx where data arrives)
 impl Default for TokenId {
     fn default() -> Self {
         TokenId::MAIN

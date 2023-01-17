@@ -1,8 +1,8 @@
-use dcspark_core::{Regulated, Value};
-use std::marker::PhantomData;
 use cardano_multiplatform_lib::builders::input_builder::InputBuilderResult;
 use cardano_multiplatform_lib::TransactionOutput;
 use dcspark_core::tx::{UTxOBuilder, UTxODetails};
+use dcspark_core::{Regulated, Value};
+use std::marker::PhantomData;
 
 ///
 /// This trait is designed to hide the fee calculation under abstraction.
@@ -24,12 +24,25 @@ pub trait TransactionFeeEstimator {
     fn max_size(&self) -> anyhow::Result<usize>;
 }
 
-pub struct ConvertedFeeEstimate<InputFrom, InputTo, OutputFrom, OutputTo, Estimator: TransactionFeeEstimator<InputUtxo=InputTo, OutputUtxo=OutputTo>> {
+pub struct ConvertedFeeEstimate<
+    InputFrom,
+    InputTo,
+    OutputFrom,
+    OutputTo,
+    Estimator: TransactionFeeEstimator<InputUtxo = InputTo, OutputUtxo = OutputTo>,
+> {
     inner: Estimator,
     phantom: PhantomData<(InputFrom, OutputFrom)>,
 }
 
-impl<InputFrom, InputTo, OutputFrom, OutputTo, Estimator: TransactionFeeEstimator<InputUtxo=InputTo, OutputUtxo=OutputTo>> ConvertedFeeEstimate<InputFrom, InputTo, OutputFrom, OutputTo, Estimator> {
+impl<
+        InputFrom,
+        InputTo,
+        OutputFrom,
+        OutputTo,
+        Estimator: TransactionFeeEstimator<InputUtxo = InputTo, OutputUtxo = OutputTo>,
+    > ConvertedFeeEstimate<InputFrom, InputTo, OutputFrom, OutputTo, Estimator>
+{
     pub fn new(inner: Estimator) -> Self {
         Self {
             inner,
@@ -38,8 +51,17 @@ impl<InputFrom, InputTo, OutputFrom, OutputTo, Estimator: TransactionFeeEstimato
     }
 }
 
-impl<Estimator: TransactionFeeEstimator<InputUtxo=InputBuilderResult, OutputUtxo=TransactionOutput>>
-    TransactionFeeEstimator for ConvertedFeeEstimate<UTxODetails, InputBuilderResult, UTxOBuilder, TransactionOutput, Estimator> {
+impl<
+        Estimator: TransactionFeeEstimator<InputUtxo = InputBuilderResult, OutputUtxo = TransactionOutput>,
+    > TransactionFeeEstimator
+    for ConvertedFeeEstimate<
+        UTxODetails,
+        InputBuilderResult,
+        UTxOBuilder,
+        TransactionOutput,
+        Estimator,
+    >
+{
     type InputUtxo = UTxODetails;
     type OutputUtxo = UTxOBuilder;
 
@@ -76,8 +98,16 @@ impl<Estimator: TransactionFeeEstimator<InputUtxo=InputBuilderResult, OutputUtxo
     }
 }
 
-impl<Estimator: TransactionFeeEstimator<InputUtxo=UTxODetails, OutputUtxo=UTxOBuilder>>
-    TransactionFeeEstimator for ConvertedFeeEstimate<InputBuilderResult, UTxODetails, TransactionOutput, UTxOBuilder, Estimator> {
+impl<Estimator: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>>
+    TransactionFeeEstimator
+    for ConvertedFeeEstimate<
+        InputBuilderResult,
+        UTxODetails,
+        TransactionOutput,
+        UTxOBuilder,
+        Estimator,
+    >
+{
     type InputUtxo = InputBuilderResult;
     type OutputUtxo = TransactionOutput;
 

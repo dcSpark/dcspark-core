@@ -2,20 +2,16 @@ use std::path::PathBuf;
 
 use crate::tx_event::{address_from_pair, pair_from_address, TxEvent, TxOutput};
 
-
 use dcspark_core::tx::{TransactionAsset, TransactionId, UTxOBuilder, UTxODetails, UtxoPointer};
 use dcspark_core::{Address, Balance, OutputIndex, Regulated, TokenId, Value};
 use itertools::Itertools;
-
 
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::sync::Arc;
-use utxo_selection::{
-    InputOutputSetup, InputSelectionAlgorithm, TransactionFeeEstimator,
-};
+use utxo_selection::{InputOutputSetup, InputSelectionAlgorithm, TransactionFeeEstimator};
 
 /* we don't take txs:
  * - with byron inputs
@@ -523,7 +519,8 @@ fn print_computed_balance(
 
     output_balance_short
         .write_all(format!("better than actual: {:?}\n", better_than_actual).as_bytes())?;
-    output_balance_short.write_all(format!("not worse as actual: {:?}\n", not_worse_than_actual).as_bytes())?;
+    output_balance_short
+        .write_all(format!("not worse as actual: {:?}\n", not_worse_than_actual).as_bytes())?;
     output_balance_short
         .write_all(format!("worse than actual: {:?}\n", worse_than_actual).as_bytes())?;
     output_balance_short.write_all(format!("can't compare: {:?}\n", non_checkable).as_bytes())?;
@@ -580,9 +577,7 @@ fn add_to_actual_balance(
             continue;
         }
 
-        let balance = staking_key_balance_actual
-            .entry(staking)
-            .or_default();
+        let balance = staking_key_balance_actual.entry(staking).or_default();
         *balance.entry(TokenId::MAIN).or_default() += &output.value;
         for token in output.assets.iter() {
             let asset = TransactionAsset::from(token.clone());
@@ -645,9 +640,7 @@ fn add_new_selected_outputs_to_stake_keys(
                 assets: output.assets.clone(),
                 metadata: Arc::new(Default::default()),
             });
-        let current_token_balance = staking_key_balance_computed
-            .entry(staking)
-            .or_default();
+        let current_token_balance = staking_key_balance_computed.entry(staking).or_default();
 
         *current_token_balance.entry(TokenId::MAIN).or_default() += &output.value;
         for token in output.assets.iter() {
@@ -702,9 +695,7 @@ fn add_untouched_outputs_to_stake_keys(
                 assets: assets.clone(),
                 metadata: Arc::new(Default::default()),
             });
-        let current_token_balance = staking_key_balance_computed
-            .entry(staking)
-            .or_default();
+        let current_token_balance = staking_key_balance_computed.entry(staking).or_default();
 
         *current_token_balance.entry(TokenId::MAIN).or_default() += &output.value;
         for token in assets.into_iter() {
@@ -724,9 +715,7 @@ fn recount_available_inputs(
     let current_stake_key_utxos = address_computed_utxos_by_stake_key
         .entry(stake_key)
         .or_default();
-    let current_token_balance = staking_key_balance_computed
-        .entry(stake_key)
-        .or_default();
+    let current_token_balance = staking_key_balance_computed.entry(stake_key).or_default();
 
     for chosen_input in chosen_inputs.into_iter() {
         let (payment, staking) = pair_from_address(chosen_input.address.clone()).unwrap();
@@ -768,7 +757,7 @@ fn get_non_change_outputs(
         })
         .cloned()
         .collect();
-    
+
     outputs_to_builders(non_changes)
 }
 

@@ -5,7 +5,6 @@ use cardano_utils::multisig_plan::MultisigPlan;
 use clap::Parser;
 use serde::Deserialize;
 
-
 use std::fs::File;
 
 use tracing_subscriber::prelude::*;

@@ -2,7 +2,6 @@ use anyhow::anyhow;
 use clap::Parser;
 use entity::prelude::TransactionModel;
 
-
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;

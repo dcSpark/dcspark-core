@@ -1,21 +1,19 @@
 use anyhow::{anyhow, Context};
-use cardano_multiplatform_lib::address::{StakeCredential};
+use cardano_multiplatform_lib::address::StakeCredential;
 
+use cardano_multiplatform_lib::crypto::{Ed25519KeyHash, ScriptHash};
 use clap::Parser;
+use pallas_addresses::{ShelleyDelegationPart, ShelleyPaymentPart};
 use serde::Deserialize;
-use std::collections::{HashSet};
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
-use cardano_multiplatform_lib::crypto::{Ed25519KeyHash, ScriptHash};
-use pallas_addresses::{ShelleyDelegationPart, ShelleyPaymentPart};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use utxo_selection_benchmark::mapper::DataMapper;
 use utxo_selection_benchmark::tx_event::{TxEvent, TxOutput};
-use utxo_selection_benchmark::utils::{
-    dump_hashset_to_file, read_hashset_from_file,
-};
+use utxo_selection_benchmark::utils::{dump_hashset_to_file, read_hashset_from_file};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -109,20 +107,22 @@ async fn _main() -> anyhow::Result<()> {
                     }
                     pallas_addresses::Address::Shelley(shelley) => {
                         let payment_cred = match shelley.payment() {
-                            ShelleyPaymentPart::Key(key) => {
-                                StakeCredential::from_keyhash(&Ed25519KeyHash::from_bytes(key.to_vec()).unwrap())
-                            }
-                            ShelleyPaymentPart::Script(script) => {
-                                StakeCredential::from_scripthash(&ScriptHash::from_bytes(script.to_vec()).unwrap())
-                            }
+                            ShelleyPaymentPart::Key(key) => StakeCredential::from_keyhash(
+                                &Ed25519KeyHash::from_bytes(key.to_vec()).unwrap(),
+                            ),
+                            ShelleyPaymentPart::Script(script) => StakeCredential::from_scripthash(
+                                &ScriptHash::from_bytes(script.to_vec()).unwrap(),
+                            ),
                         };
                         let staking_cred: Option<StakeCredential> = match shelley.delegation() {
                             ShelleyDelegationPart::Null => None,
-                            ShelleyDelegationPart::Key(key) => {
-                                Some(StakeCredential::from_keyhash(&Ed25519KeyHash::from_bytes(key.to_vec()).unwrap()))
-                            }
+                            ShelleyDelegationPart::Key(key) => Some(StakeCredential::from_keyhash(
+                                &Ed25519KeyHash::from_bytes(key.to_vec()).unwrap(),
+                            )),
                             ShelleyDelegationPart::Script(script) => {
-                                Some(StakeCredential::from_scripthash(&ScriptHash::from_bytes(script.to_vec()).unwrap()))
+                                Some(StakeCredential::from_scripthash(
+                                    &ScriptHash::from_bytes(script.to_vec()).unwrap(),
+                                ))
                             }
                             ShelleyDelegationPart::Pointer(_) => {
                                 todo!("not supported")
@@ -136,8 +136,8 @@ async fn _main() -> anyhow::Result<()> {
                     }
                 };
                 let payment_mapping = payment_address_to_num.add_if_not_presented(payment);
-                let staking_mapping = staking
-                    .map(|staking| stake_address_to_num.add_if_not_presented(staking));
+                let staking_mapping =
+                    staking.map(|staking| stake_address_to_num.add_if_not_presented(staking));
                 banned_addresses.insert((payment_mapping, staking_mapping));
             }
 

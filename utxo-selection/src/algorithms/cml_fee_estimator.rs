@@ -1,13 +1,11 @@
-
-
 use anyhow::anyhow;
-use cardano_multiplatform_lib::builders::input_builder::{InputBuilderResult};
-use cardano_multiplatform_lib::builders::output_builder::{SingleOutputBuilderResult};
+use cardano_multiplatform_lib::builders::input_builder::InputBuilderResult;
+use cardano_multiplatform_lib::builders::output_builder::SingleOutputBuilderResult;
 use cardano_multiplatform_lib::builders::tx_builder::TransactionBuilder;
 use cardano_multiplatform_lib::TransactionOutput;
 use dcspark_core::{Regulated, Value};
 
-use crate::{TransactionFeeEstimator};
+use crate::TransactionFeeEstimator;
 
 pub struct CmlFeeEstimator {
     builder: TransactionBuilder,
@@ -17,7 +15,11 @@ const DEFAULT_TX_SIZE: usize = 16384;
 
 impl CmlFeeEstimator {
     pub fn new(mut tx_builder: TransactionBuilder) -> anyhow::Result<Self> {
-        tx_builder.set_fee(&tx_builder.min_fee(true).map_err(|err| anyhow!("can't set fee: {}", err))?);
+        tx_builder.set_fee(
+            &tx_builder
+                .min_fee(true)
+                .map_err(|err| anyhow!("can't set fee: {}", err))?,
+        );
         Ok(Self {
             builder: tx_builder,
         })
@@ -29,42 +31,59 @@ impl TransactionFeeEstimator for CmlFeeEstimator {
     type OutputUtxo = TransactionOutput;
 
     fn min_required_fee(&self) -> anyhow::Result<Value<Regulated>> {
-        let fee = self.builder.min_fee(true).map_err(|err| anyhow!("can't calculate fees: {}", err))?;
+        let fee = self
+            .builder
+            .min_fee(true)
+            .map_err(|err| anyhow!("can't calculate fees: {}", err))?;
 
         Ok(Value::<Regulated>::from(u64::from(fee)))
     }
 
     fn fee_for_input(&self, input: &Self::InputUtxo) -> anyhow::Result<Value<Regulated>> {
         let mut builder = self.builder.clone();
-        builder.add_input(input).map_err(|err|anyhow!("Can't add input: {}", err))?;
-        let fee = builder.min_fee(true).map_err(|err| anyhow!("can't calculate fees: {}", err))?;
+        builder
+            .add_input(input)
+            .map_err(|err| anyhow!("Can't add input: {}", err))?;
+        let fee = builder
+            .min_fee(true)
+            .map_err(|err| anyhow!("can't calculate fees: {}", err))?;
         Ok(Value::<Regulated>::from(u64::from(fee)))
     }
 
     fn add_input(&mut self, input: Self::InputUtxo) -> anyhow::Result<()> {
-        self.builder.add_input(&input).map_err(|err| anyhow!("Can't add input {}", err))
+        self.builder
+            .add_input(&input)
+            .map_err(|err| anyhow!("Can't add input {}", err))
     }
 
     fn fee_for_output(&self, output: &Self::OutputUtxo) -> anyhow::Result<Value<Regulated>> {
         let mut builder = self.builder.clone();
         let output = output_to_builder_result(output);
-        println!("{:?}",output.output().amount().coin());
-        builder.add_output(&output).map_err(|err|anyhow!("Can't add output: {}", err))?;
-        let fee = builder.min_fee(true).map_err(|err| anyhow!("can't calculate fees: {}", err))?;
-        println!("{:?}",fee);
+        println!("{:?}", output.output().amount().coin());
+        builder
+            .add_output(&output)
+            .map_err(|err| anyhow!("Can't add output: {}", err))?;
+        let fee = builder
+            .min_fee(true)
+            .map_err(|err| anyhow!("can't calculate fees: {}", err))?;
+        println!("{:?}", fee);
 
         Ok(Value::<Regulated>::from(u64::from(fee)))
     }
 
     fn add_output(&mut self, output: Self::OutputUtxo) -> anyhow::Result<()> {
-        println!("{:?}",output.amount().coin());
+        println!("{:?}", output.amount().coin());
 
         let output = output_to_builder_result(&output);
-        self.builder.add_output(&output).map_err(|err| anyhow!("Can't add output {}", err))
+        self.builder
+            .add_output(&output)
+            .map_err(|err| anyhow!("Can't add output {}", err))
     }
 
     fn current_size(&self) -> anyhow::Result<usize> {
-        self.builder.full_size().map_err(|err| anyhow!("can't calculate size: {}", err))
+        self.builder
+            .full_size()
+            .map_err(|err| anyhow!("can't calculate size: {}", err))
     }
 
     fn max_size(&self) -> anyhow::Result<usize> {
@@ -76,20 +95,21 @@ fn output_to_builder_result(output: &TransactionOutput) -> SingleOutputBuilderRe
     SingleOutputBuilderResult::new(output)
 }
 
-
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-    use cardano_multiplatform_lib::builders::tx_builder::{TransactionBuilderConfig, TransactionBuilderConfigBuilder};
+    use cardano_multiplatform_lib::builders::tx_builder::{
+        TransactionBuilderConfig, TransactionBuilderConfigBuilder,
+    };
     use cardano_multiplatform_lib::ledger::alonzo::fees::LinearFee;
     use cardano_multiplatform_lib::ledger::common::value::BigNum;
     use cardano_multiplatform_lib::plutus::ExUnitPrices;
     use cardano_multiplatform_lib::UnitInterval;
-    
-    use dcspark_core::{Address, Value};
-    use dcspark_core::tx::{TransactionId, UTxOBuilder, UTxODetails, UtxoPointer};
+    use std::sync::Arc;
+
     use crate::algorithms::{CmlFeeEstimator, Thermostat, ThermostatAlgoConfig};
     use crate::{ConvertedFeeEstimate, InputOutputSetup, InputSelectionAlgorithm};
+    use dcspark_core::tx::{TransactionId, UTxOBuilder, UTxODetails, UtxoPointer};
+    use dcspark_core::{Address, Value};
 
     fn builder_config() -> TransactionBuilderConfig {
         let coefficient = BigNum::from_str("44").unwrap();
@@ -110,12 +130,10 @@ mod tests {
             .key_deposit(&key_deposit)
             .max_value_size(max_value_size)
             .max_tx_size(max_tx_size as u32)
-            .ex_unit_prices(
-                &ExUnitPrices::new(
-                    &UnitInterval::new(&BigNum::zero(), &BigNum::zero()),
-                    &UnitInterval::new(&BigNum::zero(), &BigNum::zero())
-                )
-            )
+            .ex_unit_prices(&ExUnitPrices::new(
+                &UnitInterval::new(&BigNum::zero(), &BigNum::zero()),
+                &UnitInterval::new(&BigNum::zero(), &BigNum::zero()),
+            ))
             .collateral_percentage(0)
             .max_collateral_inputs(0)
             .build()
@@ -124,7 +142,14 @@ mod tests {
 
     #[test]
     fn test_compatibility() {
-        let mut estimator = ConvertedFeeEstimate::new(CmlFeeEstimator::new(cardano_multiplatform_lib::builders::tx_builder::TransactionBuilder::new(&builder_config())).unwrap());
+        let mut estimator = ConvertedFeeEstimate::new(
+            CmlFeeEstimator::new(
+                cardano_multiplatform_lib::builders::tx_builder::TransactionBuilder::new(
+                    &builder_config(),
+                ),
+            )
+            .unwrap(),
+        );
         let mut thermostat = Thermostat::new(ThermostatAlgoConfig::default());
 
         thermostat.set_available_inputs(vec![UTxODetails {

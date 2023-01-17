@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use anyhow::{anyhow, Context};
 use cardano_multiplatform_lib::address::StakeCredential;
 
-
 use cardano_multiplatform_lib::PolicyID;
 use clap::Parser;
 use dcspark_core::Regulated;
@@ -21,7 +20,7 @@ use std::io::{BufRead, BufReader, Write};
 use tracing_subscriber::prelude::*;
 use utxo_selection_benchmark::mapper::DataMapper;
 use utxo_selection_benchmark::tx_event::{TxAsset, TxEvent, TxOutput};
-use utxo_selection_benchmark::utils::{dump_hashset_to_file};
+use utxo_selection_benchmark::utils::dump_hashset_to_file;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -520,8 +519,7 @@ fn get_input_intents(
 
     let has_banned_addresses = parsed_inputs.iter().any(|input| {
         input.address.is_none()
-            || (input.address.is_some()
-                && banned_addresses.contains(&input.address.unwrap()))
+            || (input.address.is_some() && banned_addresses.contains(&input.address.unwrap()))
     });
 
     Ok((

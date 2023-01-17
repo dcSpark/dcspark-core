@@ -6,9 +6,9 @@ use cardano_utils::multisig_plan::MultisigPlan;
 use cardano_utils::network_id::NetworkInfo;
 use dcspark_core::tx::{TransactionAsset, UTxOBuilder, UTxODetails, UtxoPointer};
 use dcspark_core::{Address, Balance, Regulated, TokenId, UTxOStore, Value};
+use deps::bigdecimal::ToPrimitive;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
-use deps::bigdecimal::ToPrimitive;
 
 pub struct ThermostatAlgoConfig {
     num_accumulators: usize,
@@ -174,7 +174,6 @@ impl TransactionFeeEstimator for ThermostatFeeEstimator {
     }
 }
 
-
 pub struct Thermostat {
     optional_change_address: Option<Address>,
     changes: HashMap<TokenId, UTxOBuilder>,
@@ -211,11 +210,26 @@ impl Thermostat {
 
     fn remaining_number_inputs_allowed<
         Estimate: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>,
-    >(&self, estimate: &mut Estimate) -> anyhow::Result<usize> {
-        let known_output = self.outputs.first().ok_or_else(|| anyhow!("can't estimate output fee"))?;
-        let known_input = self.selected_inputs.first().ok_or_else(|| anyhow!("can't estimate input fee"))?;
-        let size_of_one_output = estimate.fee_for_output(known_output)?.to_usize().ok_or_else(|| anyhow!("can't estimate remaining inputs allowed"))?;
-        let size_of_one_input = estimate.fee_for_input(known_input)?.to_usize().ok_or_else(|| anyhow!("can't estimate remaining inputs allowed"))?;
+    >(
+        &self,
+        estimate: &mut Estimate,
+    ) -> anyhow::Result<usize> {
+        let known_output = self
+            .outputs
+            .first()
+            .ok_or_else(|| anyhow!("can't estimate output fee"))?;
+        let known_input = self
+            .selected_inputs
+            .first()
+            .ok_or_else(|| anyhow!("can't estimate input fee"))?;
+        let size_of_one_output = estimate
+            .fee_for_output(known_output)?
+            .to_usize()
+            .ok_or_else(|| anyhow!("can't estimate remaining inputs allowed"))?;
+        let size_of_one_input = estimate
+            .fee_for_input(known_input)?
+            .to_usize()
+            .ok_or_else(|| anyhow!("can't estimate remaining inputs allowed"))?;
 
         // compute if we need to reserve ROOM for a change address
         // for the main asset

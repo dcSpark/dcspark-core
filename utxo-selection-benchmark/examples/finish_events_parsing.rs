@@ -7,12 +7,13 @@ use pallas_addresses::{ShelleyDelegationPart, ShelleyPaymentPart};
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use utxo_selection_benchmark::generation_utils::clean_events;
 use utxo_selection_benchmark::mapper::DataMapper;
-use utxo_selection_benchmark::tx_event::{TxEvent, TxOutput};
+
 use utxo_selection_benchmark::utils::{dump_hashset_to_file, read_hashset_from_file};
 
 #[derive(Debug, Clone, Deserialize)]
@@ -162,73 +163,6 @@ async fn _main() -> anyhow::Result<()> {
     )?;
 
     tracing::info!("Cleaning finished");
-
-    Ok(())
-}
-
-fn clean_events(
-    events_output_path: PathBuf,
-    cleaned_events_output_path: PathBuf,
-    banned_addresses: &HashSet<(u64, Option<u64>)>,
-) -> anyhow::Result<()> {
-    let file = File::open(events_output_path)?;
-    let mut cleaned_file = File::create(cleaned_events_output_path)?;
-
-    let reader = BufReader::new(file);
-    let lines = reader.lines();
-    for (num, line) in lines.enumerate() {
-        let event: TxEvent = serde_json::from_str(line?.as_str())?;
-        let event = match event {
-            TxEvent::Partial { to } => {
-                let to: Vec<TxOutput> = to
-                    .into_iter()
-                    .filter(|output| !output.is_byron() && !output.is_banned(banned_addresses))
-                    .collect();
-                if !to.is_empty() {
-                    Some(TxEvent::Partial { to })
-                } else {
-                    None
-                }
-            }
-            TxEvent::Full { to, fee, from } => {
-                if from
-                    .iter()
-                    .any(|input| input.is_byron() || input.is_banned(banned_addresses))
-                {
-                    let new_to: Vec<TxOutput> = to
-                        .into_iter()
-                        .filter(|output| !output.is_byron() && !output.is_banned(banned_addresses))
-                        .collect();
-                    if !new_to.is_empty() {
-                        Some(TxEvent::Partial { to: new_to })
-                    } else {
-                        None
-                    }
-                } else {
-                    let new_to: Vec<TxOutput> = to
-                        .into_iter()
-                        .map(|mut output| {
-                            if output.is_banned(banned_addresses) {
-                                output.address = None;
-                            }
-                            output
-                        })
-                        .collect();
-                    Some(TxEvent::Full {
-                        to: new_to,
-                        fee,
-                        from,
-                    })
-                }
-            }
-        };
-        if let Some(event) = event {
-            cleaned_file.write_all(format!("{}\n", serde_json::to_string(&event)?).as_bytes())?;
-        }
-        if num % 100000 == 0 {
-            tracing::info!("Processed {:?} entries", num + 1);
-        }
-    }
 
     Ok(())
 }

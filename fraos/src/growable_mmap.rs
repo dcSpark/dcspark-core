@@ -263,6 +263,7 @@ impl GrowableMmap {
         }
     }
 
+    #[allow(clippy::manual_clamp)]
     fn get_new_mmap_size(&self, add: usize, active_mmap_size: Option<usize>) -> usize {
         match self.file {
             None => add,

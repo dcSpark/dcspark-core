@@ -1,7 +1,6 @@
 use crate::algorithm::InputSelectionAlgorithm;
 use crate::algorithms::utils;
 use crate::common::{InputOutputSetup, InputSelectionResult};
-use crate::csl::CslTransactionOutput;
 use crate::estimate::TransactionFeeEstimator;
 use anyhow::anyhow;
 use cardano_multiplatform_lib::builders::input_builder::InputBuilderResult;
@@ -61,15 +60,7 @@ impl InputSelectionAlgorithm for RandomImprove {
         )?);
         let mut fee = cardano_utils::conversion::value_to_csl_coin(&estimator.min_required_fee()?)?;
 
-        let explicit_outputs: Vec<TransactionOutput> = input_output_setup
-            .fixed_outputs
-            .clone()
-            .into_iter()
-            .map(|output| {
-                let output: CslTransactionOutput = output.into();
-                output.inner
-            })
-            .collect();
+        let explicit_outputs: Vec<TransactionOutput> = input_output_setup.fixed_outputs.clone();
 
         let mut rng = rand::thread_rng();
         let mut chosen_indices = utils::cip2_random_improve_by(

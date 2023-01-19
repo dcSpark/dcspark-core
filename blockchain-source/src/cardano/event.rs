@@ -104,7 +104,7 @@ impl<Tip> GetNextFrom for CardanoNetworkEvent<BlockEvent, Tip> {
 
 impl BlockEvent {
     pub(crate) fn from_serialized_block(raw_block: &[u8]) -> anyhow::Result<Self> {
-        let block: anyhow::Result<cardano_sdk::chain::Block> =
+        let block: anyhow::Result<crate::cardano::block::Block> =
             cbored::decode_from_bytes(raw_block).context("failed to deserialize block");
 
         if let Ok(block) = block {

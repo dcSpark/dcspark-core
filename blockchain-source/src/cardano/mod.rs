@@ -79,6 +79,7 @@ impl Source for CardanoSource {
 
         if self.service.send((from, tx)).await.is_err() {
             error!("block processing service stopped");
+            return Err(anyhow::anyhow!("request handler stoped"));
         }
 
         self.current.replace(rx);
@@ -151,7 +152,7 @@ impl CardanoSource {
 }
 
 async fn request_handler(
-    mut handle: NetworkHandle,
+    handle: NetworkHandle,
     mut requests: mpsc::Receiver<(Vec<Point>, mpsc::Sender<Result<Event>>)>,
     exit_signal: oneshot::Sender<()>,
     tip_update_pace: Duration,
@@ -162,8 +163,30 @@ async fn request_handler(
     let mut interval = interval(tip_update_pace);
     interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
+    let mut handle = Some(handle);
+
     while let Some((from, channel)) = requests.recv().await {
         interval.tick().await;
+
+        if handle.is_none() {
+            info!("trying to reestablish connection with the node");
+
+            match NetworkHandle::start(&config).await {
+                Ok(new_handle) => {
+                    info!("connection reestablished succesfully");
+                    handle.replace(new_handle);
+                }
+                Err(error) => {
+                    error!(%error, "failed to reestablish connection with the node");
+
+                    let _ = channel.send(Err(error).context("failed to reestablish connection"));
+
+                    break;
+                }
+            }
+        }
+
+        let mut current_handle = handle.take().unwrap();
 
         let from = if from
             == vec![Point::BlockHeader {
@@ -178,25 +201,11 @@ async fn request_handler(
             from
         };
 
-        if let Err(e) = block_fetch(&mut handle, from, &channel).await {
-            warn!(error = %e, "failed to start block_fetch");
-            handle.stop().await;
-
-            info!("trying to reestablish connection with the node");
-
-            match NetworkHandle::start(&config).await {
-                Ok(new_handle) => {
-                    info!("connection reestablished succesfully");
-                    handle = new_handle
-                }
-                Err(error) => {
-                    error!(%error, "failed to reestablish connection with the node");
-
-                    let _ = channel.send(Err(e));
-
-                    break;
-                }
-            }
+        if let Err(e) = block_fetch(&mut current_handle, from, &channel).await {
+            warn!(error = %e, "lost connection to the node");
+            current_handle.stop().await;
+        } else {
+            handle = Some(current_handle);
         }
     }
 

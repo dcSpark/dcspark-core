@@ -1,13 +1,41 @@
 use cardano_sdk::chain::{
-    AnyCbor, BlockAlonzo, BlockShelley, Header, HeaderVasil, MetadataSet, TransactionBodies,
-    TxIndexes,
+    AnyCbor, Header, HeaderShelley, HeaderVasil, MetadataSet, TransactionBodies, TxIndexes,
 };
 use cbored::{CborRepr, DecodeError};
+
+// Currently, cardano-sdk can't parse blocks that have Redeemer fields inside the witnesses,
+// because of an issue deserializing the data field.
+//
+// Because for our use-cases these fields are not necessary anyway, we can just avoid the
+// validation by parsing them as `AnyCbor`
+//
+// Unfortunately the only way of doing that easily (without patching the library) is to just
+// re-define the block types here, this involves some code duplication, although it also gives us
+// better control.
 
 #[derive(Clone, Debug, CborRepr, PartialEq, Eq)]
 #[cborrepr(structure = "array")]
 pub struct BlockVasil {
     pub header: HeaderVasil,
+    pub tx_bodies: TransactionBodies,
+    pub tx_witnesses: AnyCbor,
+    pub metadata_set: MetadataSet,
+    pub invalid_tx: TxIndexes,
+}
+
+#[derive(Clone, Debug, CborRepr, PartialEq, Eq)]
+#[cborrepr(structure = "array")]
+pub struct BlockShelley {
+    pub header: HeaderShelley,
+    pub tx_bodies: TransactionBodies,
+    pub tx_witnesses: AnyCbor,
+    pub metadata_set: MetadataSet,
+}
+
+#[derive(Clone, Debug, CborRepr, PartialEq, Eq)]
+#[cborrepr(structure = "array")]
+pub struct BlockAlonzo {
+    pub header: HeaderShelley,
     pub tx_bodies: TransactionBodies,
     pub tx_witnesses: AnyCbor,
     pub metadata_set: MetadataSet,

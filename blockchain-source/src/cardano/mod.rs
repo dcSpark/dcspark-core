@@ -1,3 +1,4 @@
+pub mod block;
 mod byron;
 mod configuration;
 mod event;

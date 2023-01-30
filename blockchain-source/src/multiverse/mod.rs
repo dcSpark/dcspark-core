@@ -293,7 +293,7 @@ mod tests {
         let mut source = TestSource::default();
         for i in 1..=length {
             source.extend_tip(V {
-                id: K(format!("s{0}", i)),
+                id: K(format!("s{i}")),
                 parent_id: K(format!("s{0}", i - 1)),
                 block_number: BlockNumber::new(i as u64),
             })

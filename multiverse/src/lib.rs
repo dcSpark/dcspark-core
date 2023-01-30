@@ -407,9 +407,8 @@ where
             for child in entry.children {
                 assert!(
                     self.roots.insert(child.clone()),
-                    "Somehow a child ({child_id:?}) was already in the set of root entries. \
+                    "Somehow a child ({child:?}) was already in the set of root entries. \
                 This should not happen in normal circumstances.",
-                    child_id = child,
                 );
             }
         }
@@ -805,7 +804,7 @@ mod tests {
             let node = V::new(id, Self::COUNTER_START);
             self.multiverse
                 .insert(node)
-                .with_context(|| format!("Failed to insert root node {id}", id = id))?;
+                .with_context(|| format!("Failed to insert root node {id}"))?;
             self.purge()?;
             Ok(())
         }
@@ -826,7 +825,7 @@ mod tests {
                 let id = discarded.inner();
                 self.multiverse
                     .remove(&discarded)
-                    .with_context(|| format!("failed to discarded node {id:?}", id = id))?;
+                    .with_context(|| format!("failed to discarded node {id:?}"))?;
             }
 
             Ok(())

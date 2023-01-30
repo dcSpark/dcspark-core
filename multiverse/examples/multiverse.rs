@@ -56,8 +56,8 @@ fn main() {
             .parse::<usize>()
             .expect("Second arg has to be a number");
 
-        println!("\nMULTIVERSE STRUCTURE:\n{}", MULTIVERSE_STRUCTURE);
-        println!("\nINPUT:\n\tdepth = {}\n\tage_gap = {}\n", depth, age_gap);
+        println!("\nMULTIVERSE STRUCTURE:\n{MULTIVERSE_STRUCTURE}");
+        println!("\nINPUT:\n\tdepth = {depth}\n\tage_gap = {age_gap}\n");
 
         BestBlockSelectionRule::LongestChain { depth, age_gap }
     } else {
@@ -74,7 +74,7 @@ fn main() {
     println!("\tBest block: {}", bb.selected.unwrap());
     print!("\tDiscarded : ");
     for v in bb.discarded {
-        print!("{}, ", v);
+        print!("{v}, ");
     }
     println!();
 }

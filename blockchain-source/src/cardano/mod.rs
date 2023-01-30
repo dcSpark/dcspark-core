@@ -12,6 +12,7 @@ use cardano_net::{NetworkDescription, NetworkHandle};
 pub use cardano_sdk::protocol::Tip;
 use cardano_sdk::protocol::Version;
 pub use configuration::{ChainInfo, NetworkConfiguration};
+use dcspark_core::error::CriticalError;
 use dcspark_core::BlockId;
 pub use point::*;
 use tokio::sync::{mpsc, oneshot};
@@ -277,7 +278,7 @@ async fn block_fetch(
     let _ = block_fetcher.next().await?;
 
     while let Some(raw_block) = block_fetcher.next().await? {
-        let event = BlockEvent::from_serialized_block(raw_block.as_ref());
+        let event = BlockEvent::from_serialized_block(raw_block.as_ref()).context(CriticalError {});
 
         if channel
             .send(event.map(CardanoNetworkEvent::Block))

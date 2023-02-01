@@ -206,7 +206,7 @@ async fn request_handler(
         };
 
         if let Err(e) = block_fetch(&mut current_handle, from, &channel).await {
-            warn!(error = %e, "lost connection to the node");
+            warn!(error = %e, "dropping connection handle");
             current_handle.stop().await;
         } else {
             handle = Some(current_handle);
@@ -286,7 +286,7 @@ async fn block_fetch(
             .await
             .is_err()
         {
-            warn!("request response channel was closed, ignoring received blocks");
+            return Err(anyhow::anyhow!("request response channel was closed"));
         }
     }
 

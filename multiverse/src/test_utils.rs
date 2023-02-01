@@ -125,10 +125,8 @@ impl TestContext {
         let v = V::new(id, 1);
         if let Some(_v) = self.all.insert(v.id.clone(), v.clone()) {
             assert_eq!(
-                v,
-                _v,
-                "previous V does not match the new V, the IDs are clashing: {id}",
-                id = id
+                v, _v,
+                "previous V does not match the new V, the IDs are clashing: {id}"
             );
         } else {
             self.ordered.push(v);
@@ -151,10 +149,8 @@ impl TestContext {
 
         if let Some(_v) = self.all.insert(v.id.clone(), v.clone()) {
             assert_eq!(
-                v,
-                _v,
-                "previous V does not match the new V, the IDs are clashing: {id}",
-                id = id
+                v, _v,
+                "previous V does not match the new V, the IDs are clashing: {id}"
             );
         } else {
             self.ordered.push(v);

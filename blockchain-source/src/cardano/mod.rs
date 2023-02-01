@@ -113,7 +113,7 @@ impl CardanoSource {
 
         // we don't need the handle, since we can signalkill the task by just dropping the request
         // channel, and the task can't error.
-        let _ = tokio::task::spawn(
+        tokio::task::spawn(
             request_handler(
                 handle,
                 rx,
@@ -180,7 +180,9 @@ async fn request_handler(
                 Err(error) => {
                     error!(%error, "failed to reestablish connection with the node");
 
-                    let _ = channel.send(Err(error).context("failed to reestablish connection"));
+                    let _ = channel
+                        .send(Err(error).context("failed to reestablish connection"))
+                        .await;
 
                     break;
                 }

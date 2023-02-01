@@ -271,12 +271,12 @@ mod tests {
         for i in from..=to {
             let parent_id = if i == from { forking_point } else { i - 1 };
 
-            let parent_id = K(format!("s{0}", parent_id));
+            let parent_id = K(format!("s{parent_id}"));
 
             source.extend(
                 parent_id.clone(),
                 V {
-                    id: K(format!("s{0}", i)),
+                    id: K(format!("s{i}")),
                     parent_id,
                     block_number: BlockNumber::new((i - forking_point) as u64),
                 },

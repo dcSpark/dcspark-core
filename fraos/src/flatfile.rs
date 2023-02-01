@@ -25,7 +25,7 @@ impl FlatFile {
 
     /// Write an array of records to the drive. This function will block if
     /// another write is still in progress.
-    pub fn append<'a>(&'a self, records: &[&[u8]]) -> Result<(), Error> {
+    pub fn append(&self, records: &[&[u8]]) -> Result<(), Error> {
         if records.is_empty() {
             return Ok(());
         }

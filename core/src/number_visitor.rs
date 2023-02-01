@@ -87,8 +87,8 @@ mod tests {
 
     #[smoketest{ n: num::<u64>() }]
     fn check_visitor_from_string(n: u64) {
-        let input = format!("\"{}\"", n);
-        let expected = format!("{}", n);
+        let input = format!("\"{n}\"");
+        let expected = format!("{n}");
 
         let sample: Sample = deps::serde_json::from_str(&input).unwrap();
         let result = deps::serde_json::to_string(&sample).unwrap();

@@ -168,7 +168,7 @@ mod tests {
             .map(|data| data.as_ref())
             .collect();
 
-        if data1.is_empty() || data2.is_empty() {
+        if records1.is_empty() || records2.is_empty() {
             return;
         }
 

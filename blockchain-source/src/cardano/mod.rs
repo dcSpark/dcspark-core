@@ -12,7 +12,8 @@ use cardano_net::{NetworkDescription, NetworkHandle};
 pub use cardano_sdk::protocol::Tip;
 use cardano_sdk::protocol::Version;
 pub use configuration::{ChainInfo, NetworkConfiguration};
-use dcspark_core::BlockId;
+use dcspark_core::error::CriticalError;
+use dcspark_core::{critical_error, BlockId};
 pub use point::*;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{interval, Duration, MissedTickBehavior};
@@ -205,7 +206,7 @@ async fn request_handler(
         };
 
         if let Err(e) = block_fetch(&mut current_handle, from, &channel).await {
-            warn!(error = %e, "lost connection to the node");
+            warn!(error = %e, "dropping connection handle");
             current_handle.stop().await;
         } else {
             handle = Some(current_handle);
@@ -277,14 +278,15 @@ async fn block_fetch(
     let _ = block_fetcher.next().await?;
 
     while let Some(raw_block) = block_fetcher.next().await? {
-        let event = BlockEvent::from_serialized_block(raw_block.as_ref());
+        let event =
+            BlockEvent::from_serialized_block(raw_block.as_ref()).context(critical_error!());
 
         if channel
             .send(event.map(CardanoNetworkEvent::Block))
             .await
             .is_err()
         {
-            warn!("request response channel was closed, ignoring received blocks");
+            return Err(anyhow::anyhow!("request response channel was closed"));
         }
     }
 

@@ -1,5 +1,6 @@
 mod block_id;
 mod block_number;
+pub mod error;
 mod number_visitor;
 mod slot_number;
 mod timestamp;

@@ -5,6 +5,8 @@ mod event;
 mod point;
 pub mod time;
 
+use std::time::Instant;
+
 pub use self::event::{BlockEvent, CardanoNetworkEvent};
 use crate::Source;
 use anyhow::{Context as _, Result};
@@ -16,7 +18,7 @@ use dcspark_core::error::CriticalError;
 use dcspark_core::{critical_error, BlockId};
 pub use point::*;
 use tokio::sync::{mpsc, oneshot};
-use tokio::time::{interval, Duration, MissedTickBehavior};
+use tokio::time::Duration;
 use tracing::{debug, error, info, warn, Instrument};
 
 const TX_PROCESSING_CHANNEL_BOUND: usize = 1000;
@@ -162,14 +164,14 @@ async fn request_handler(
     genesis: BlockId,
     config: NetworkDescription,
 ) {
-    let mut interval = interval(tip_update_pace);
-    interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    // initially set this to a time in the past, which guarantees an event in the tip fetch.
+    let mut last_tip_event = Instant::now()
+        .checked_sub(tip_update_pace)
+        .expect("overflow when substracting from Instant::now");
 
     let mut handle = Some(handle);
 
     while let Some((from, channel)) = requests.recv().await {
-        interval.tick().await;
-
         if handle.is_none() {
             info!("trying to reestablish connection with the node");
 
@@ -205,7 +207,15 @@ async fn request_handler(
             from
         };
 
-        if let Err(e) = block_fetch(&mut current_handle, from, &channel).await {
+        if let Err(e) = block_fetch(
+            &mut current_handle,
+            from,
+            &channel,
+            &mut last_tip_event,
+            tip_update_pace,
+        )
+        .await
+        {
             warn!(error = %e, "dropping connection handle");
             current_handle.stop().await;
         } else {
@@ -221,6 +231,8 @@ async fn block_fetch(
     handle: &mut NetworkHandle,
     from: Vec<Point>,
     channel: &mpsc::Sender<Result<Event, anyhow::Error>>,
+    last_tip_event: &mut Instant,
+    tip_update_pace: Duration,
 ) -> Result<()> {
     let points: Result<Vec<_>> = from
         .into_iter()
@@ -255,13 +267,17 @@ async fn block_fetch(
         return Ok(());
     }
 
-    if channel
-        .send(Ok(CardanoNetworkEvent::Tip(tip.clone())))
-        .await
-        .is_err()
-    {
-        debug!("can't send tip event, request response channel was closed");
-    };
+    if last_tip_event.elapsed() >= tip_update_pace {
+        if channel
+            .send(Ok(CardanoNetworkEvent::Tip(tip.clone())))
+            .await
+            .is_err()
+        {
+            debug!("can't send tip event, request response channel was closed");
+        };
+
+        *last_tip_event = Instant::now();
+    }
 
     info!(%from, %tip, "making block range request");
 

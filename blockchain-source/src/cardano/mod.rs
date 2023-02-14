@@ -183,11 +183,10 @@ async fn request_handler(
                 Err(error) => {
                     error!(%error, "failed to reestablish connection with the node");
 
-                    let _ = channel
-                        .send(Err(error).context("failed to reestablish connection"))
-                        .await;
-
-                    break;
+                    // this will make the `pull` return None.
+                    //
+                    // so waiting between retries will depend on the polling frequency
+                    continue;
                 }
             }
         }

@@ -1,4 +1,4 @@
-const EPOCH_LENGTH_IN_SECONDS: u64 = 43200;
+const EPOCH_LENGTH_IN_SECONDS: u64 = 432000;
 const BYRON_SLOT_DURATION: u64 = 20;
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -74,5 +74,9 @@ mod tests {
             Some(209),
             era.absolute_slot_to_epoch(era.first_slot + EPOCH_LENGTH_IN_SECONDS)
         );
+
+        let correct = 92595;
+        let slot = epoch_slot_to_absolute(4, 6195);
+        assert_eq!(slot, correct);
     }
 }

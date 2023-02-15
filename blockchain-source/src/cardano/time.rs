@@ -74,5 +74,9 @@ mod tests {
             Some(209),
             era.absolute_slot_to_epoch(era.first_slot + EPOCH_LENGTH_IN_SECONDS)
         );
+
+        let correct = 92595;
+        let slot = epoch_slot_to_absolute(4, 6195);
+        assert_eq!(slot, correct);
     }
 }

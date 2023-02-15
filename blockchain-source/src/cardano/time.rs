@@ -1,4 +1,4 @@
-const EPOCH_LENGTH_IN_SECONDS: u64 = 43200;
+const EPOCH_LENGTH_IN_SECONDS: u64 = 432000;
 const BYRON_SLOT_DURATION: u64 = 20;
 
 #[derive(Debug, Clone, serde::Deserialize)]

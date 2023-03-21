@@ -14,7 +14,7 @@ impl TransactionId {
     /// the transaction id that denote the absence of transaction identifier
     ///
     /// ```
-    /// use dcspark_core::TransactionId;
+    /// use dcspark_core::tx::TransactionId;
     ///
     /// assert_eq!(
     ///   TransactionId::ZERO,

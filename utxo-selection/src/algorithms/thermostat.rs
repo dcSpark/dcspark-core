@@ -469,7 +469,7 @@ impl Thermostat {
         //
         // this value is later popped out so we don't do something silly on the
         // handling of re-balancing the excess
-        if self.asset_balance.is_empty() {
+        if self.asset_balance.is_empty() || assets.is_empty() {
             assets.push(self.config.main_token.clone());
         }
         let mut empty = vec![false; assets.len()];
@@ -478,7 +478,7 @@ impl Thermostat {
         while self.remaining_number_inputs_allowed(estimator)? > 0 {
             let asset = assets
                 .get(index)
-                .expect("We created it with the available values and index is capped by the len");
+                .unwrap_or_else(|| panic!("We created it with the available values and index is capped by the len: index: {}, assets: {:?}", index, assets));
 
             if !empty[index] {
                 if utxos.number_utxos_for_token(asset) <= self.config.num_accumulators {
@@ -498,7 +498,9 @@ impl Thermostat {
         }
         // We pop out the TokenId::MAIN so we don't do something silly on the
         // handling of re-balancing the excess
-        if self.asset_balance.is_empty() {
+        if self.asset_balance.is_empty()
+            || (assets.len() == 1 && assets.first().cloned().unwrap() == self.config.main_token)
+        {
             let _ = assets.pop();
         }
 

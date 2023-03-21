@@ -43,6 +43,15 @@ impl InputSelectionAlgorithm for RandomImprove {
     type InputUtxo = UTxODetails;
     type OutputUtxo = UTxOBuilder;
 
+    fn set_available_inputs(
+        &mut self,
+        available_inputs: Vec<Self::InputUtxo>,
+    ) -> anyhow::Result<()> {
+        let _available_indices = BTreeSet::from_iter(0..available_inputs.len());
+        self.available_inputs = available_inputs;
+        Ok(())
+    }
+
     fn select_inputs<
         Estimate: TransactionFeeEstimator<InputUtxo = Self::InputUtxo, OutputUtxo = Self::OutputUtxo>,
     >(
@@ -165,6 +174,13 @@ impl InputSelectionAlgorithm for RandomImprove {
             input_asset_balance: asset_input_balance,
             output_asset_balance: asset_output_balance,
         })
+    }
+
+    fn available_inputs(&self) -> Vec<Self::InputUtxo> {
+        self.available_indices
+            .iter()
+            .map(|index| self.available_inputs[*index].clone())
+            .collect::<Vec<_>>()
     }
 }
 

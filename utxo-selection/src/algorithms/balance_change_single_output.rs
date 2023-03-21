@@ -7,6 +7,7 @@ use dcspark_core::tx::{TransactionAsset, UTxOBuilder, UTxODetails};
 use dcspark_core::{Address, Balance, Regulated, Value};
 
 pub struct SingleOutputChangeBalancer {
+    available_inputs: Vec<UTxODetails>,
     address: Address,
     extra: Option<String>,
 }
@@ -14,6 +15,7 @@ pub struct SingleOutputChangeBalancer {
 impl SingleOutputChangeBalancer {
     pub fn new(address: Address) -> Self {
         Self {
+            available_inputs: vec![],
             address,
             extra: None,
         }
@@ -27,6 +29,14 @@ impl SingleOutputChangeBalancer {
 impl InputSelectionAlgorithm for SingleOutputChangeBalancer {
     type InputUtxo = UTxODetails;
     type OutputUtxo = UTxOBuilder;
+
+    fn set_available_inputs(
+        &mut self,
+        available_inputs: Vec<Self::InputUtxo>,
+    ) -> anyhow::Result<()> {
+        self.available_inputs = available_inputs;
+        Ok(())
+    }
 
     fn select_inputs<
         Estimate: TransactionFeeEstimator<InputUtxo = Self::InputUtxo, OutputUtxo = Self::OutputUtxo>,
@@ -113,5 +123,9 @@ impl InputSelectionAlgorithm for SingleOutputChangeBalancer {
             changes: vec![change],
             fee,
         })
+    }
+
+    fn available_inputs(&self) -> Vec<Self::InputUtxo> {
+        self.available_inputs.clone()
     }
 }

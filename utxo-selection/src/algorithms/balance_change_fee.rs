@@ -7,11 +7,21 @@ use dcspark_core::tx::{UTxOBuilder, UTxODetails};
 use dcspark_core::Balance;
 
 #[derive(Default)]
-pub struct FeeChangeBalancer {}
+pub struct FeeChangeBalancer {
+    available_inputs: Vec<UTxODetails>,
+}
 
 impl InputSelectionAlgorithm for FeeChangeBalancer {
     type InputUtxo = UTxODetails;
     type OutputUtxo = UTxOBuilder;
+
+    fn set_available_inputs(
+        &mut self,
+        available_inputs: Vec<Self::InputUtxo>,
+    ) -> anyhow::Result<()> {
+        self.available_inputs = available_inputs;
+        Ok(())
+    }
 
     fn select_inputs<
         Estimate: TransactionFeeEstimator<InputUtxo = Self::InputUtxo, OutputUtxo = Self::OutputUtxo>,
@@ -58,5 +68,9 @@ impl InputSelectionAlgorithm for FeeChangeBalancer {
             changes: vec![],
             fee,
         })
+    }
+
+    fn available_inputs(&self) -> Vec<Self::InputUtxo> {
+        self.available_inputs.clone()
     }
 }

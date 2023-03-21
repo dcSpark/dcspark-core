@@ -543,6 +543,18 @@ impl InputSelectionAlgorithm for Thermostat {
     type InputUtxo = UTxODetails;
     type OutputUtxo = UTxOBuilder;
 
+    fn set_available_inputs(
+        &mut self,
+        available_inputs: Vec<Self::InputUtxo>,
+    ) -> anyhow::Result<()> {
+        let mut utxo_store = UTxOStore::new().thaw();
+        for input in available_inputs.into_iter() {
+            utxo_store.insert(input)?;
+        }
+        self.available_utxos = utxo_store.freeze();
+        Ok(())
+    }
+
     fn select_inputs<
         Estimate: TransactionFeeEstimator<InputUtxo = Self::InputUtxo, OutputUtxo = Self::OutputUtxo>,
     >(
@@ -629,6 +641,13 @@ impl InputSelectionAlgorithm for Thermostat {
                 .collect(),
             fee: estimator.min_required_fee()?,
         })
+    }
+
+    fn available_inputs(&self) -> Vec<Self::InputUtxo> {
+        self.available_utxos
+            .iter()
+            .map(|(_, v)| v.as_ref().clone())
+            .collect::<Vec<_>>()
     }
 }
 

@@ -1,42 +1,43 @@
 use crate::algorithm::InputSelectionAlgorithm;
-use crate::algorithms::utils;
+use crate::calculate_main_token_balance;
 use crate::common::{InputOutputSetup, InputSelectionResult};
 use crate::estimate::TransactionFeeEstimator;
 use anyhow::anyhow;
-use cardano_multiplatform_lib::builders::input_builder::InputBuilderResult;
-use cardano_multiplatform_lib::TransactionOutput;
-use dcspark_core::Balance;
-use std::collections::HashSet;
+use dcspark_core::tx::{TransactionAsset, UTxOBuilder, UTxODetails};
+use dcspark_core::{Regulated, TokenId, UTxOStore};
+use std::collections::HashMap;
 
 pub struct LargestFirst {
-    available_inputs: Vec<InputBuilderResult>,
-    available_indices: HashSet<usize>,
+    available_inputs: UTxOStore,
 }
 
-impl LargestFirst {
-    #[allow(unused)]
-    fn new(available_inputs: Vec<InputBuilderResult>) -> Self {
-        let available_indices = HashSet::from_iter(0..available_inputs.len());
-        Self {
-            available_inputs,
-            available_indices,
+impl TryFrom<UTxOStore> for LargestFirst {
+    type Error = anyhow::Error;
+
+    fn try_from(value: UTxOStore) -> Result<Self, Self::Error> {
+        Ok(Self {
+            available_inputs: value,
+        })
+    }
+}
+
+impl TryFrom<Vec<UTxODetails>> for LargestFirst {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Vec<UTxODetails>) -> Result<Self, Self::Error> {
+        let mut store = UTxOStore::new().thaw();
+        for val in value {
+            store.insert(val)?;
         }
+        Ok(Self {
+            available_inputs: store.freeze(),
+        })
     }
 }
 
 impl InputSelectionAlgorithm for LargestFirst {
-    type InputUtxo = InputBuilderResult;
-    type OutputUtxo = TransactionOutput;
-
-    fn set_available_inputs(
-        &mut self,
-        available_inputs: Vec<Self::InputUtxo>,
-    ) -> anyhow::Result<()> {
-        let available_indices = HashSet::from_iter(0..available_inputs.len());
-        self.available_inputs = available_inputs;
-        self.available_indices = available_indices;
-        Ok(())
-    }
+    type InputUtxo = UTxODetails;
+    type OutputUtxo = UTxOBuilder;
 
     fn select_inputs<
         Estimate: TransactionFeeEstimator<InputUtxo = Self::InputUtxo, OutputUtxo = Self::OutputUtxo>,
@@ -45,146 +46,242 @@ impl InputSelectionAlgorithm for LargestFirst {
         estimator: &mut Estimate,
         input_output_setup: InputOutputSetup<Self::InputUtxo, Self::OutputUtxo>,
     ) -> anyhow::Result<InputSelectionResult<Self::InputUtxo, Self::OutputUtxo>> {
-        if !input_output_setup.output_asset_balance.is_empty()
-            || !input_output_setup.input_asset_balance.is_empty()
-        {
-            return Err(anyhow!("Multiasset values not supported by LargestFirst. Please use LargestFirstMultiAsset"));
+        let mut input_balance = input_output_setup.input_balance;
+        let output_balance = input_output_setup.output_balance;
+        let mut fee = estimator.min_required_fee()?;
+
+        let mut asset_input_balance = input_output_setup.input_asset_balance;
+        let asset_output_balance = input_output_setup.output_asset_balance;
+
+        let mut selected_inputs: Vec<UTxODetails> = vec![];
+
+        let mut utxos = self.available_inputs.clone();
+
+        for (token, token_output_balance) in asset_output_balance.iter() {
+            let mut token_input_balance = asset_input_balance
+                .entry(token.clone())
+                .or_insert(TransactionAsset::new(
+                    token_output_balance.policy_id.clone(),
+                    token_output_balance.asset_name.clone(),
+                    token_output_balance.fingerprint.clone(),
+                ))
+                .quantity
+                .clone();
+
+            while token_input_balance < token_output_balance.quantity {
+                let (new_selected_inputs, new_utxos) = select_input_and_update_balances(
+                    token,
+                    utxos.clone(),
+                    estimator,
+                    &mut asset_input_balance,
+                    &mut token_input_balance,
+                    &mut input_balance,
+                    &mut fee,
+                )?;
+                selected_inputs.extend(new_selected_inputs);
+                utxos = new_utxos;
+            }
         }
-        let mut input_total = cardano_multiplatform_lib::ledger::common::value::Value::new(
-            &cardano_utils::conversion::value_to_csl_coin(&input_output_setup.input_balance)?,
-        );
-        let mut output_total = cardano_multiplatform_lib::ledger::common::value::Value::new(
-            &cardano_utils::conversion::value_to_csl_coin(&input_output_setup.output_balance)?,
-        );
-        let mut fee = cardano_utils::conversion::value_to_csl_coin(&estimator.min_required_fee()?)?;
 
-        let chosen_indices = utils::cip2_largest_first_by(
-            estimator,
-            &self.available_inputs,
-            &mut self.available_indices,
-            &mut input_total,
-            &mut output_total,
-            &mut fee,
-            |value| Some(value.coin()),
-        )?;
+        while calculate_main_token_balance(&input_balance, &output_balance, &fee).in_debt() {
+            let (new_selected_inputs, new_utxos) = select_input_and_update_balances_for_main(
+                utxos.clone(),
+                estimator,
+                &mut asset_input_balance,
+                &mut input_balance,
+                &mut fee,
+            )?;
+            selected_inputs.extend(new_selected_inputs);
+            utxos = new_utxos;
+        }
 
-        let input_balance = cardano_utils::conversion::csl_coin_to_value(&input_total.coin())?;
-        let output_balance = cardano_utils::conversion::csl_coin_to_value(&output_total.coin())?;
-        let fee = cardano_utils::conversion::csl_coin_to_value(&fee)?;
-
-        let mut balance = Balance::zero();
-        balance += input_balance.clone() - output_balance.clone();
+        self.available_inputs = utxos;
 
         Ok(InputSelectionResult {
             fixed_inputs: input_output_setup.fixed_inputs,
             fixed_outputs: input_output_setup.fixed_outputs,
-            chosen_inputs: chosen_indices
-                .into_iter()
-                .map(|i| self.available_inputs[i].clone())
-                .collect(),
+            chosen_inputs: selected_inputs,
             changes: vec![],
             input_balance,
             output_balance,
             fee,
 
-            input_asset_balance: Default::default(),
-            output_asset_balance: Default::default(),
-
-            balance,
-            asset_balance: Default::default(),
+            input_asset_balance: asset_input_balance,
+            output_asset_balance: asset_output_balance,
         })
     }
+}
 
-    fn available_inputs(&self) -> Vec<Self::InputUtxo> {
-        self.available_indices
-            .iter()
-            .map(|index| self.available_inputs[*index].clone())
-            .collect()
+fn select_input_and_update_balances<
+    Estimate: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>,
+>(
+    token: &TokenId,
+    utxos: UTxOStore,
+    estimator: &mut Estimate,
+    asset_input_balance: &mut HashMap<TokenId, TransactionAsset>,
+    input_token_balance: &mut dcspark_core::Value<Regulated>,
+    input_total: &mut dcspark_core::Value<Regulated>,
+    fee: &mut dcspark_core::Value<Regulated>,
+) -> anyhow::Result<(Vec<UTxODetails>, UTxOStore)> {
+    let mut selected_inputs: Vec<UTxODetails> = vec![];
+
+    let (selected, new_utxos) = select_largest_input_for(utxos, token)?;
+
+    *input_total += &selected.value;
+    for asset in selected.assets.iter() {
+        if token != &TokenId::MAIN && &asset.fingerprint == token {
+            *input_token_balance += &asset.quantity;
+        }
+
+        let current_input_asset = asset_input_balance
+            .entry(asset.fingerprint.clone())
+            .or_insert(TransactionAsset::new(
+                asset.policy_id.clone(),
+                asset.asset_name.clone(),
+                asset.fingerprint.clone(),
+            ));
+        current_input_asset.quantity += &asset.quantity;
     }
+
+    *fee += estimator.fee_for_input(&selected)?;
+    selected_inputs.push(selected.clone());
+    estimator.add_input(selected)?;
+
+    Ok((selected_inputs, new_utxos))
+}
+
+fn select_input_and_update_balances_for_main<
+    Estimate: TransactionFeeEstimator<InputUtxo = UTxODetails, OutputUtxo = UTxOBuilder>,
+>(
+    utxos: UTxOStore,
+    estimator: &mut Estimate,
+    asset_input_balance: &mut HashMap<TokenId, TransactionAsset>,
+    input_total: &mut dcspark_core::Value<Regulated>,
+    fee: &mut dcspark_core::Value<Regulated>,
+) -> anyhow::Result<(Vec<UTxODetails>, UTxOStore)> {
+    let mut selected_inputs: Vec<UTxODetails> = vec![];
+
+    let (selected, new_utxos) = select_largest_input_for(utxos, &TokenId::MAIN)?;
+
+    *input_total += &selected.value;
+    for asset in selected.assets.iter() {
+        let current_input_asset = asset_input_balance
+            .entry(asset.fingerprint.clone())
+            .or_insert(TransactionAsset::new(
+                asset.policy_id.clone(),
+                asset.asset_name.clone(),
+                asset.fingerprint.clone(),
+            ));
+        current_input_asset.quantity += &asset.quantity;
+    }
+
+    *fee += estimator.fee_for_input(&selected)?;
+    selected_inputs.push(selected.clone());
+    estimator.add_input(selected)?;
+
+    Ok((selected_inputs, new_utxos))
+}
+
+pub fn select_largest_input_for(
+    utxos: UTxOStore,
+    asset: &TokenId,
+) -> anyhow::Result<(UTxODetails, UTxOStore)> {
+    let utxo = utxos
+        // here we take the largest available UTxO for this given
+        // asset.
+        .iter_token_ordered_by_value_rev(asset)
+        .next()
+        .cloned()
+        .ok_or_else(|| anyhow!("No more input to select for {asset}"))?;
+
+    let mut utxos = utxos.thaw();
+    utxos.remove(&utxo.pointer)?;
+    Ok((utxo, utxos.freeze()))
 }
 
 #[cfg(test)]
 mod tests {
     use crate::algorithms::LargestFirst;
-    use crate::{DummyCmlFeeEstimate, InputOutputSetup, InputSelectionAlgorithm};
-    use cardano_multiplatform_lib::address::Address;
-    use cardano_multiplatform_lib::builders::input_builder::SingleInputBuilder;
-    use cardano_multiplatform_lib::crypto::TransactionHash;
-    use cardano_multiplatform_lib::ledger::common::value::{BigNum, Coin, Value};
-    use cardano_multiplatform_lib::{TransactionInput, TransactionOutput};
-    use dcspark_core::Regulated;
+    use crate::estimators::dummy_estimator::DummyFeeEstimate;
+    use crate::{InputOutputSetup, InputSelectionAlgorithm};
+    use dcspark_core::tx::{TransactionAsset, TransactionId, UTxODetails, UtxoPointer};
+    use dcspark_core::{
+        Address, AssetName, OutputIndex, PolicyId, Regulated, TokenId, UTxOStore, Value,
+    };
+    use std::collections::HashMap;
+    use std::sync::Arc;
 
-    #[test]
-    fn try_select_dummy_fee() {
-        let mut largest_first = LargestFirst::new(vec![]);
-        let input_builder_result = SingleInputBuilder::new(
-            &TransactionInput::new(
-                &TransactionHash::from_hex(
-                    "a90a895d07049afc725a0d6a38c6b82218b8d1de60e7bd70ecdd58f1d9e1218b",
-                )
-                .unwrap(),
-                &BigNum::zero(),
-            ),
-            &TransactionOutput::new(
-                &Address::from_bech32("addr1u8pcjgmx7962w6hey5hhsd502araxp26kdtgagakhaqtq8sxy9w7g")
-                    .unwrap(),
-                &Value::new(&Coin::zero()),
-            ),
-        );
-        largest_first
-            .set_available_inputs(vec![input_builder_result.payment_key().unwrap()])
-            .unwrap();
-        largest_first
-            .select_inputs(&mut DummyCmlFeeEstimate::new(), InputOutputSetup::default())
-            .unwrap();
+    pub fn create_utxo(
+        tx: u64,
+        index: u64,
+        address: String,
+        value: Value<Regulated>,
+        assets: Vec<TransactionAsset>,
+    ) -> UTxODetails {
+        UTxODetails {
+            pointer: UtxoPointer {
+                transaction_id: TransactionId::new(tx.to_string()),
+                output_index: OutputIndex::new(index),
+            },
+            address: Address::new(address),
+            value,
+            assets,
+            metadata: Arc::new(Default::default()),
+            extra: None,
+        }
+    }
+
+    pub fn create_asset(fingerprint: String, quantity: Value<Regulated>) -> TransactionAsset {
+        let fingerprint = TokenId::new(fingerprint);
+        TransactionAsset {
+            policy_id: PolicyId::new(fingerprint.as_ref().to_string()),
+            asset_name: AssetName::new(fingerprint.as_ref().to_string()),
+            fingerprint,
+            quantity,
+        }
     }
 
     #[test]
-    fn try_select_dummy_fee_non_zero() {
-        let mut largest_first = LargestFirst::new(vec![]);
-        let input_builder_result_1 = SingleInputBuilder::new(
-            &TransactionInput::new(
-                &TransactionHash::from_hex(
-                    "a90a895d07049afc725a0d6a38c6b82218b8d1de60e7bd70ecdd58f1d9e1218b",
-                )
-                .unwrap(),
-                &BigNum::from(0),
-            ),
-            &TransactionOutput::new(
-                &Address::from_bech32("addr1u8pcjgmx7962w6hey5hhsd502araxp26kdtgagakhaqtq8sxy9w7g")
-                    .unwrap(),
-                &Value::new(&Coin::from(1000)),
-            ),
-        )
-        .payment_key()
-        .unwrap();
-
-        let input_builder_result_2 = SingleInputBuilder::new(
-            &TransactionInput::new(
-                &TransactionHash::from_hex(
-                    "b90a895d07049afc725a0d6a38c6b82218b8d1de60e7bd70ecdd58f1d9e1218b",
-                )
-                .unwrap(),
-                &BigNum::from(0),
-            ),
-            &TransactionOutput::new(
-                &Address::from_bech32("addr1u8pcjgmx7962w6hey5hhsd502araxp26kdtgagakhaqtq8sxy9w7g")
-                    .unwrap(),
-                &Value::new(&Coin::from(2000)),
-            ),
-        )
-        .payment_key()
-        .unwrap();
-        largest_first
-            .set_available_inputs(vec![input_builder_result_1, input_builder_result_2.clone()])
+    fn try_select_dummy_fee() {
+        let mut store = UTxOStore::new().thaw();
+        store
+            .insert(create_utxo(
+                0,
+                0,
+                "0".to_string(),
+                Value::<Regulated>::from(10),
+                vec![],
+            ))
             .unwrap();
+        store
+            .insert(create_utxo(
+                0,
+                1,
+                "0".to_string(),
+                Value::<Regulated>::from(20),
+                vec![],
+            ))
+            .unwrap();
+        store
+            .insert(create_utxo(
+                0,
+                2,
+                "0".to_string(),
+                Value::<Regulated>::from(11),
+                vec![],
+            ))
+            .unwrap();
+        let store = store.freeze();
+
+        let mut largest_first = LargestFirst::try_from(store).unwrap();
+
         let result = largest_first
             .select_inputs(
-                &mut DummyCmlFeeEstimate::new(),
+                &mut DummyFeeEstimate::new(),
                 InputOutputSetup {
                     input_balance: Default::default(),
                     input_asset_balance: Default::default(),
-                    output_balance: dcspark_core::Value::<Regulated>::from(200),
+                    output_balance: Value::from(1),
                     output_asset_balance: Default::default(),
                     fixed_inputs: vec![],
                     fixed_outputs: vec![],
@@ -192,11 +289,156 @@ mod tests {
                 },
             )
             .unwrap();
-        let chosen_inputs = result.chosen_inputs;
-        assert_eq!(chosen_inputs.len(), 1);
+
+        assert_eq!(result.fee, Value::zero());
+        assert_eq!(result.output_balance, Value::from(1));
+        assert_eq!(result.input_balance, Value::from(20));
+        assert_eq!(result.chosen_inputs.len(), 1);
         assert_eq!(
-            chosen_inputs.first().cloned().unwrap().utxo_info.amount(),
-            input_builder_result_2.utxo_info.amount()
+            result.chosen_inputs.first().unwrap().pointer.output_index,
+            OutputIndex::new(1)
         );
+    }
+
+    #[test]
+    fn try_select_dummy_fee_assets() {
+        let mut store = UTxOStore::new().thaw();
+        store
+            .insert(create_utxo(
+                0,
+                0,
+                "0".to_string(),
+                Value::<Regulated>::from(1),
+                vec![create_asset("kek".to_string(), Value::from(1))],
+            ))
+            .unwrap();
+        store
+            .insert(create_utxo(
+                0,
+                1,
+                "0".to_string(),
+                Value::<Regulated>::from(1),
+                vec![create_asset("kek".to_string(), Value::from(100))],
+            ))
+            .unwrap();
+        store
+            .insert(create_utxo(
+                0,
+                2,
+                "0".to_string(),
+                Value::<Regulated>::from(1),
+                vec![create_asset("kek".to_string(), Value::from(201))],
+            ))
+            .unwrap();
+        store
+            .insert(create_utxo(
+                0,
+                3,
+                "0".to_string(),
+                Value::<Regulated>::from(1),
+                vec![
+                    create_asset("kek".to_string(), Value::from(200)),
+                    create_asset("lol".to_string(), Value::from(1)),
+                ],
+            ))
+            .unwrap();
+
+        store
+            .insert(create_utxo(
+                1,
+                0,
+                "0".to_string(),
+                Value::<Regulated>::from(1),
+                vec![create_asset("lol".to_string(), Value::from(1))],
+            ))
+            .unwrap();
+        store
+            .insert(create_utxo(
+                1,
+                1,
+                "0".to_string(),
+                Value::<Regulated>::from(1),
+                vec![create_asset("lol".to_string(), Value::from(100))],
+            ))
+            .unwrap();
+        store
+            .insert(create_utxo(
+                1,
+                2,
+                "0".to_string(),
+                Value::<Regulated>::from(1),
+                vec![create_asset("lol".to_string(), Value::from(201))],
+            ))
+            .unwrap();
+        store
+            .insert(create_utxo(
+                1,
+                3,
+                "0".to_string(),
+                Value::<Regulated>::from(1),
+                vec![
+                    create_asset("lol".to_string(), Value::from(200)),
+                    create_asset("kek".to_string(), Value::from(1)),
+                ],
+            ))
+            .unwrap();
+
+        store
+            .insert(create_utxo(
+                2,
+                1,
+                "0".to_string(),
+                Value::<Regulated>::from(20),
+                vec![],
+            ))
+            .unwrap();
+        store
+            .insert(create_utxo(
+                2,
+                2,
+                "0".to_string(),
+                Value::<Regulated>::from(11),
+                vec![],
+            ))
+            .unwrap();
+        let store = store.freeze();
+
+        let mut largest_first = LargestFirst::try_from(store).unwrap();
+
+        let mut output_asset_balance = HashMap::new();
+        output_asset_balance.insert(
+            TokenId::new("kek"),
+            create_asset("kek".to_string(), Value::from(402)),
+        );
+        output_asset_balance.insert(
+            TokenId::new("lol"),
+            create_asset("lol".to_string(), Value::from(402)),
+        );
+
+        let result = largest_first
+            .select_inputs(
+                &mut DummyFeeEstimate::new(),
+                InputOutputSetup {
+                    input_balance: Default::default(),
+                    input_asset_balance: Default::default(),
+                    output_balance: Value::from(24),
+                    output_asset_balance,
+                    fixed_inputs: vec![],
+                    fixed_outputs: vec![],
+                    change_address: None,
+                },
+            )
+            .unwrap();
+
+        assert_eq!(result.fee, Value::zero());
+        assert!(result.input_balance >= result.output_balance);
+        assert!(result
+            .input_asset_balance
+            .values()
+            .any(|asset: &TransactionAsset| asset.quantity == Value::from(402)));
+        assert!(result
+            .input_asset_balance
+            .values()
+            .any(|asset: &TransactionAsset| asset.quantity == Value::from(502)));
     }
 }

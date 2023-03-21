@@ -1,5 +1,7 @@
-mod algorithm;
 pub mod algorithms;
+pub mod estimators;
+
+mod algorithm;
 mod common;
 mod estimate;
 

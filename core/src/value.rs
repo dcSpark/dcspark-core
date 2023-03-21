@@ -798,8 +798,7 @@ mod tests {
         let decoded: Value<Desc> = string.parse().unwrap();
         assert_eq!(
             decoded, expected,
-            "Expected value {}, didn't match the value {}",
-            expected, decoded
+            "Expected value {expected}, didn't match the value {decoded}"
         );
     }
 

@@ -11,11 +11,6 @@ pub trait InputSelectionAlgorithm {
     type InputUtxo: Clone;
     type OutputUtxo: Clone;
 
-    fn set_available_inputs(
-        &mut self,
-        available_inputs: Vec<Self::InputUtxo>,
-    ) -> anyhow::Result<()>;
-
     fn select_inputs<
         Estimate: TransactionFeeEstimator<InputUtxo = Self::InputUtxo, OutputUtxo = Self::OutputUtxo>,
     >(
@@ -23,8 +18,6 @@ pub trait InputSelectionAlgorithm {
         estimator: &mut Estimate,
         input_output_setup: InputOutputSetup<Self::InputUtxo, Self::OutputUtxo>,
     ) -> anyhow::Result<InputSelectionResult<Self::InputUtxo, Self::OutputUtxo>>;
-
-    fn available_inputs(&self) -> Vec<Self::InputUtxo>;
 }
 ```
 
@@ -60,20 +53,19 @@ For fee estimation we provide several implementations:
 
 We also provide a couple utility fee estimators:
 * `DummyFeeEstimator` - for tests
-* `ConvertedFeeEstimate` - to be used if you want to re-use a particular fee estimator with other library. See tests for example: estimator designed to be used with CmlTypes is re-used with library-wise `UTxODetails` and `UTxOBuilder`.
 
 If any other estimator is needed the trait is generic enough, so the end-users can implement it themselves.
 
 ### Algorithms
 
 As the algorithms we provide 4 classical ones and one new:
-* largest first 
-* largest first multiasset
-* random improve
-* random improve multiasset
+* largest first (with multiasset support)
+* random improve (with multiasset support)
 * thermostat
+* fee change balancer (dumps extra ada to fee)
+* single output change balancer 
 
-First 4 are classical algorithms (see cip2). The last one we designed ourselves for bridges use case.
+First 2 are classical algorithms (see cip2). The third one we designed ourselves for bridges use case.
 
 ### Thermostat algorithm
 

@@ -38,9 +38,6 @@ pub struct InputSelectionResult<InputUtxo: Clone, OutputUtxo: Clone> {
     pub output_balance: Value<Regulated>,
     pub output_asset_balance: HashMap<TokenId, TransactionAsset>,
 
-    pub balance: Balance<Regulated>,
-    pub asset_balance: HashMap<TokenId, Balance<Regulated>>,
-
     pub fixed_inputs: Vec<InputUtxo>,
     pub fixed_outputs: Vec<OutputUtxo>,
 
@@ -50,12 +47,53 @@ pub struct InputSelectionResult<InputUtxo: Clone, OutputUtxo: Clone> {
     pub fee: Value<Regulated>,
 }
 
+pub fn calculate_main_token_balance(
+    input_balance: &Value<Regulated>,
+    output_balance: &Value<Regulated>,
+    fee: &Value<Regulated>,
+) -> Balance<Regulated> {
+    let mut balance = Balance::zero();
+    balance += input_balance;
+    balance -= fee;
+    balance -= output_balance;
+    balance
+}
+
+pub fn calculate_asset_balance(
+    input_asset_balance: &HashMap<TokenId, TransactionAsset>,
+    output_asset_balance: &HashMap<TokenId, TransactionAsset>,
+) -> HashMap<TokenId, Balance<Regulated>> {
+    let mut token_balances = HashMap::<TokenId, Balance<Regulated>>::new();
+    for (token, asset) in input_asset_balance.iter() {
+        *token_balances.entry(token.clone()).or_default() += &asset.quantity;
+    }
+    for (token, asset) in output_asset_balance.iter() {
+        *token_balances.entry(token.clone()).or_default() -= &asset.quantity;
+    }
+    token_balances
+}
+
+pub fn are_assets_balanced(
+    input_asset_balance: &HashMap<TokenId, TransactionAsset>,
+    output_asset_balance: &HashMap<TokenId, TransactionAsset>,
+) -> bool {
+    let token_balances = calculate_asset_balance(input_asset_balance, output_asset_balance);
+    for balance in token_balances.values() {
+        if !balance.balanced() {
+            return false;
+        }
+    }
+    true
+}
+
 impl<InputUtxo: Clone, OutputUtxo: Clone> InputSelectionResult<InputUtxo, OutputUtxo> {
     pub fn is_balanced(&self) -> bool {
-        (self.balance.clone() - self.fee.clone()).balanced()
-            && self
-                .asset_balance
-                .iter()
-                .all(|(_, balance)| balance.balanced())
+        let ada_balanced =
+            calculate_main_token_balance(&self.input_balance, &self.output_balance, &self.fee);
+        if !ada_balanced.balanced() {
+            return false;
+        }
+
+        are_assets_balanced(&self.input_asset_balance, &self.output_asset_balance)
     }
 }

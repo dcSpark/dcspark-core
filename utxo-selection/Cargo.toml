@@ -8,10 +8,9 @@ edition = "2021"
 [dependencies]
 deps = { version = "0.1.0", path = "../deps" }
 dcspark-core = { version = "0.1.0", path = "../core" }
-cardano-utils = { version = "0.1.0", path = "../cardano-utils" }
 
 anyhow = {version = "1.0"}
-cardano-multiplatform-lib = { git = "https://github.com/dcSpark/cardano-multiplatform-lib.git", rev = "a41264b88c9b48ac890c2d046fe916f224fccabb" }
+cardano-multiplatform-lib = {version = "3.1.3"}
 hex = { version = "0.4" }
 rand = "0.8.5"
 serde = { version = "1.0.144", features = ["derive", "rc" ] }

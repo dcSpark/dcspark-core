@@ -313,19 +313,14 @@ impl UTxOStoreMut {
             self.utxos
                 .add_value(&TokenId::MAIN, value, utxo_details.clone());
 
-            if utxo_details.assets.is_empty() {
-                // so we know this is a pure Ada UTxO so we need to be able to select
-                // this value in the `by_policy_id`.
-
-                self.by_policy_id
-                    .entry(TokenId::MAIN)
-                    .or_default()
-                    .add_value(
-                        &TokenId::MAIN,
-                        utxo_details.value.clone(),
-                        utxo_details.clone(),
-                    );
-            }
+            self.by_policy_id
+                .entry(TokenId::MAIN)
+                .or_default()
+                .add_value(
+                    &TokenId::MAIN,
+                    utxo_details.value.clone(),
+                    utxo_details.clone(),
+                );
 
             for asset in utxo_details.assets.iter() {
                 self.by_policy_id
@@ -417,6 +412,7 @@ mod tests {
                 },
             ],
             metadata: Default::default(),
+            extra: None,
         };
         assert!(mut_store.insert(utxo).is_ok());
         assert_eq!(
@@ -442,6 +438,7 @@ mod tests {
                 quantity: sushi_quantity.clone(),
             }],
             metadata: Default::default(),
+            extra: None,
         };
         assert!(mut_store.insert(new_utxo).is_ok());
         assert_eq!(
@@ -493,6 +490,7 @@ mod tests {
                 value: value.to_lovelace().to_regulated(),
                 assets: vec![],
                 metadata: Default::default(),
+                extra: None,
             };
             utxo_set.add_value(
                 &TokenId::MAIN,

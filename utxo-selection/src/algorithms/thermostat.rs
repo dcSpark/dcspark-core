@@ -1,13 +1,12 @@
-use crate::algorithm::UTxOStoreSupport;
 use crate::{
     InputOutputSetup, InputSelectionAlgorithm, InputSelectionResult, TransactionFeeEstimator,
 };
 use anyhow::{anyhow, Context};
-use dcspark_core::tx::{TransactionAsset, UTxOBuilder, UTxODetails};
+use dcspark_core::tx::{TransactionAsset, UTxOBuilder, UTxODetails, UtxoPointer};
 use dcspark_core::{Address, Balance, Regulated, TokenId, UTxOStore, Value};
 use deps::bigdecimal::ToPrimitive;
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub struct ThermostatAlgoConfig {
     num_accumulators: usize,
@@ -528,17 +527,6 @@ impl Thermostat {
     }
 }
 
-impl UTxOStoreSupport for Thermostat {
-    fn set_available_utxos(&mut self, utxos: UTxOStore) -> anyhow::Result<()> {
-        self.available_utxos = utxos;
-        Ok(())
-    }
-
-    fn get_available_utxos(&mut self) -> anyhow::Result<UTxOStore> {
-        Ok(self.available_utxos.clone())
-    }
-}
-
 impl InputSelectionAlgorithm for Thermostat {
     type InputUtxo = UTxODetails;
     type OutputUtxo = UTxOBuilder;
@@ -547,11 +535,12 @@ impl InputSelectionAlgorithm for Thermostat {
         &mut self,
         available_inputs: Vec<Self::InputUtxo>,
     ) -> anyhow::Result<()> {
-        let mut utxo_store = UTxOStore::new().thaw();
+        let mut utxos = UTxOStore::new().thaw();
         for input in available_inputs.into_iter() {
-            utxo_store.insert(input)?;
+            utxos.insert(input)?
         }
-        self.available_utxos = utxo_store.freeze();
+        self.available_utxos = utxos.freeze();
+        self.reset();
         Ok(())
     }
 
@@ -644,10 +633,16 @@ impl InputSelectionAlgorithm for Thermostat {
     }
 
     fn available_inputs(&self) -> Vec<Self::InputUtxo> {
+        let selected_pointers: HashSet<UtxoPointer> = HashSet::from_iter(
+            self.selected_inputs
+                .iter()
+                .map(|input| input.pointer.clone()),
+        );
         self.available_utxos
             .iter()
-            .map(|(_, v)| v.as_ref().clone())
-            .collect::<Vec<_>>()
+            .map(|(_, utxo)| utxo.as_ref().clone())
+            .filter(|utxo| !selected_pointers.contains(&utxo.pointer))
+            .collect()
     }
 }
 

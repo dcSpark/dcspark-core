@@ -231,45 +231,13 @@ pub fn select_largest_input_for(
 
 #[cfg(test)]
 mod tests {
+    use crate::algorithms::test_utils::{create_asset, create_utxo};
     use crate::algorithms::LargestFirst;
     use crate::estimators::dummy_estimator::DummyFeeEstimate;
     use crate::{InputOutputSetup, InputSelectionAlgorithm};
-    use dcspark_core::tx::{TransactionAsset, TransactionId, UTxODetails, UtxoPointer};
-    use dcspark_core::{
-        Address, AssetName, OutputIndex, PolicyId, Regulated, TokenId, UTxOStore, Value,
-    };
+    use dcspark_core::tx::TransactionAsset;
+    use dcspark_core::{OutputIndex, Regulated, TokenId, UTxOStore, Value};
     use std::collections::HashMap;
-    use std::sync::Arc;
-
-    pub fn create_utxo(
-        tx: u64,
-        index: u64,
-        address: String,
-        value: Value<Regulated>,
-        assets: Vec<TransactionAsset>,
-    ) -> UTxODetails {
-        UTxODetails {
-            pointer: UtxoPointer {
-                transaction_id: TransactionId::new(tx.to_string()),
-                output_index: OutputIndex::new(index),
-            },
-            address: Address::new(address),
-            value,
-            assets,
-            metadata: Arc::new(Default::default()),
-            extra: None,
-        }
-    }
-
-    pub fn create_asset(fingerprint: String, quantity: Value<Regulated>) -> TransactionAsset {
-        let fingerprint = TokenId::new(fingerprint);
-        TransactionAsset {
-            policy_id: PolicyId::new(fingerprint.as_ref().to_string()),
-            asset_name: AssetName::new(fingerprint.as_ref().to_string()),
-            fingerprint,
-            quantity,
-        }
-    }
 
     #[test]
     fn try_select_dummy_fee() {

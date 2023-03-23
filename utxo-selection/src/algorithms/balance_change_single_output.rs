@@ -4,23 +4,15 @@ use crate::{
 };
 use anyhow::anyhow;
 use dcspark_core::tx::{TransactionAsset, UTxOBuilder, UTxODetails};
-use dcspark_core::{Address, Balance, Regulated, Value};
+use dcspark_core::{Balance, Regulated, Value};
 
+#[derive(Default)]
 pub struct SingleOutputChangeBalancer {
     available_inputs: Vec<UTxODetails>,
-    address: Address,
     extra: Option<String>,
 }
 
 impl SingleOutputChangeBalancer {
-    pub fn new(address: Address) -> Self {
-        Self {
-            available_inputs: vec![],
-            address,
-            extra: None,
-        }
-    }
-
     pub fn set_extra(&mut self, extra: String) {
         self.extra = Some(extra);
     }
@@ -45,6 +37,12 @@ impl InputSelectionAlgorithm for SingleOutputChangeBalancer {
         estimator: &mut Estimate,
         input_output_setup: InputOutputSetup<Self::InputUtxo, Self::OutputUtxo>,
     ) -> anyhow::Result<InputSelectionResult<Self::InputUtxo, Self::OutputUtxo>> {
+        let change_address = if let Some(address) = input_output_setup.change_address {
+            address
+        } else {
+            return Err(anyhow!("change address is not provided"));
+        };
+
         let asset_balances = calculate_asset_balance(
             &input_output_setup.input_asset_balance,
             &input_output_setup.output_asset_balance,
@@ -90,7 +88,7 @@ impl InputSelectionAlgorithm for SingleOutputChangeBalancer {
         };
 
         let mut change = UTxOBuilder {
-            address: self.address.clone(),
+            address: change_address,
             value,
             assets: change_assets,
             extra: self.extra.clone(),
@@ -99,6 +97,8 @@ impl InputSelectionAlgorithm for SingleOutputChangeBalancer {
         let fee_for_change = estimator.fee_for_output(&change)?;
         change.value -= &fee_for_change;
         fee += &fee_for_change;
+
+        estimator.add_output(change.clone())?;
 
         let output_balance = &input_output_setup.output_balance + &change.value;
         let mut output_asset_balance = input_output_setup.output_asset_balance;
@@ -127,5 +127,191 @@ impl InputSelectionAlgorithm for SingleOutputChangeBalancer {
 
     fn available_inputs(&self) -> Vec<Self::InputUtxo> {
         self.available_inputs.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::algorithms::test_utils::{create_asset, create_utxo};
+    use crate::algorithms::{LargestFirst, SingleOutputChangeBalancer};
+    use crate::estimators::dummy_estimator::DummyFeeEstimate;
+    use crate::{InputOutputSetup, InputSelectionAlgorithm};
+    use dcspark_core::tx::UTxOBuilder;
+    use dcspark_core::{Address, Regulated, TokenId, UTxOStore, Value};
+    use std::collections::HashMap;
+
+    #[test]
+    fn try_select_dummy_fee() {
+        let mut store = UTxOStore::new().thaw();
+        store
+            .insert(create_utxo(
+                0,
+                0,
+                "0".to_string(),
+                Value::<Regulated>::from(10),
+                vec![],
+            ))
+            .unwrap();
+        store
+            .insert(create_utxo(
+                0,
+                1,
+                "0".to_string(),
+                Value::<Regulated>::from(20),
+                vec![],
+            ))
+            .unwrap();
+        store
+            .insert(create_utxo(
+                0,
+                2,
+                "0".to_string(),
+                Value::<Regulated>::from(11),
+                vec![],
+            ))
+            .unwrap();
+        store
+            .insert(create_utxo(
+                0,
+                3,
+                "0".to_string(),
+                Value::<Regulated>::from(1),
+                vec![create_asset("0".to_string(), Value::from(1))],
+            ))
+            .unwrap();
+        store
+            .insert(create_utxo(
+                0,
+                4,
+                "0".to_string(),
+                Value::<Regulated>::from(1),
+                vec![
+                    create_asset("0".to_string(), Value::from(90)),
+                    create_asset("1".to_string(), Value::from(90)),
+                ],
+            ))
+            .unwrap();
+        store
+            .insert(create_utxo(
+                0,
+                5,
+                "0".to_string(),
+                Value::<Regulated>::from(1),
+                vec![create_asset("0".to_string(), Value::from(9))],
+            ))
+            .unwrap();
+        store
+            .insert(create_utxo(
+                0,
+                6,
+                "0".to_string(),
+                Value::<Regulated>::from(1),
+                vec![create_asset("0".to_string(), Value::from(2))],
+            ))
+            .unwrap();
+        store
+            .insert(create_utxo(
+                0,
+                7,
+                "0".to_string(),
+                Value::<Regulated>::from(1),
+                vec![create_asset("0".to_string(), Value::from(3))],
+            ))
+            .unwrap();
+        let store = store.freeze();
+
+        let mut largest_first = LargestFirst::try_from(store).unwrap();
+
+        let mut output_balance = HashMap::new();
+        output_balance.insert(
+            TokenId::new("0"),
+            create_asset("0".to_string(), Value::from(100)),
+        );
+        let result = largest_first
+            .select_inputs(
+                &mut DummyFeeEstimate::new(),
+                InputOutputSetup {
+                    input_balance: Default::default(),
+                    input_asset_balance: Default::default(),
+                    output_balance: Value::from(24),
+                    output_asset_balance: output_balance.clone(),
+                    fixed_inputs: vec![],
+                    fixed_outputs: vec![UTxOBuilder::new(
+                        Address::new("unwrap"),
+                        Value::<Regulated>::from(24),
+                        output_balance.values().cloned().collect(),
+                    )],
+                    change_address: None,
+                },
+            )
+            .unwrap();
+
+        assert_eq!(result.fee, Value::zero());
+        assert_eq!(result.output_balance, Value::from(24));
+        assert_eq!(result.input_balance, Value::from(34));
+        assert_eq!(
+            result
+                .input_asset_balance
+                .get(&TokenId::new("0"))
+                .cloned()
+                .unwrap()
+                .quantity,
+            Value::from(102)
+        );
+        assert_eq!(
+            result
+                .output_asset_balance
+                .get(&TokenId::new("0"))
+                .cloned()
+                .unwrap()
+                .quantity,
+            Value::from(100)
+        );
+        assert_eq!(result.chosen_inputs.len(), 5);
+
+        let mut balance_change = SingleOutputChangeBalancer::default();
+
+        let result = balance_change
+            .select_inputs(
+                &mut DummyFeeEstimate::new(),
+                InputOutputSetup {
+                    input_balance: result.input_balance,
+                    input_asset_balance: result.input_asset_balance,
+                    output_balance: result.output_balance,
+                    output_asset_balance: result.output_asset_balance,
+                    fixed_inputs: result.chosen_inputs,
+                    fixed_outputs: result.fixed_outputs,
+                    change_address: Some(Address::new("kek")),
+                },
+            )
+            .unwrap();
+
+        assert_eq!(result.fee, Value::zero());
+        assert_eq!(result.chosen_inputs.len(), 0);
+        assert_eq!(result.fixed_inputs.len(), 5);
+        assert_eq!(result.fixed_outputs.len(), 1);
+        assert_eq!(result.changes.len(), 1);
+        assert!(result.is_balanced());
+
+        let change = result.changes.first().cloned().unwrap();
+        assert_eq!(change.value, Value::<Regulated>::from(10));
+        assert_eq!(
+            change
+                .assets
+                .iter()
+                .find(|asset| asset.fingerprint == TokenId::new("0"))
+                .cloned()
+                .unwrap(),
+            create_asset("0".to_string(), Value::from(2))
+        );
+        assert_eq!(
+            change
+                .assets
+                .iter()
+                .find(|asset| asset.fingerprint == TokenId::new("1"))
+                .cloned()
+                .unwrap(),
+            create_asset("1".to_string(), Value::from(90))
+        );
     }
 }

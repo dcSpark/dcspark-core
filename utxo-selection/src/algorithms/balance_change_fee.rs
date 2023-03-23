@@ -74,3 +74,79 @@ impl InputSelectionAlgorithm for FeeChangeBalancer {
         self.available_inputs.clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::algorithms::{FeeChangeBalancer, LargestFirst};
+    use crate::estimators::dummy_estimator::DummyFeeEstimate;
+    use crate::{InputOutputSetup, InputSelectionAlgorithm};
+    use dcspark_core::tx::UTxOBuilder;
+    use dcspark_core::{Address, Regulated, UTxOStore, Value};
+
+    use crate::algorithms::test_utils::create_utxo;
+
+    #[test]
+    fn try_select_dummy_fee() {
+        let mut store = UTxOStore::new().thaw();
+        store
+            .insert(create_utxo(
+                0,
+                0,
+                "0".to_string(),
+                Value::<Regulated>::from(10),
+                vec![],
+            ))
+            .unwrap();
+        let store = store.freeze();
+
+        let mut largest_first = LargestFirst::try_from(store).unwrap();
+
+        let result = largest_first
+            .select_inputs(
+                &mut DummyFeeEstimate::new(),
+                InputOutputSetup {
+                    input_balance: Default::default(),
+                    input_asset_balance: Default::default(),
+                    output_balance: Value::from(1),
+                    output_asset_balance: Default::default(),
+                    fixed_inputs: vec![],
+                    fixed_outputs: vec![UTxOBuilder::new(
+                        Address::new("unwrap"),
+                        Value::<Regulated>::from(1),
+                        vec![],
+                    )],
+                    change_address: None,
+                },
+            )
+            .unwrap();
+
+        assert_eq!(result.fee, Value::zero());
+        assert_eq!(result.output_balance, Value::from(1));
+        assert_eq!(result.input_balance, Value::from(10));
+        assert_eq!(result.chosen_inputs.len(), 1);
+
+        let mut balance_change = FeeChangeBalancer::default();
+
+        let result = balance_change
+            .select_inputs(
+                &mut DummyFeeEstimate::new(),
+                InputOutputSetup {
+                    input_balance: result.input_balance,
+                    input_asset_balance: result.input_asset_balance,
+                    output_balance: result.output_balance,
+                    output_asset_balance: result.output_asset_balance,
+                    fixed_inputs: result.chosen_inputs,
+                    fixed_outputs: result.fixed_outputs,
+                    change_address: Some(Address::new("kek")),
+                },
+            )
+            .unwrap();
+
+        assert_eq!(result.fee, Value::from(9));
+        assert_eq!(result.chosen_inputs.len(), 0);
+        assert_eq!(result.fixed_inputs.len(), 1);
+        assert_eq!(result.fixed_outputs.len(), 1);
+        assert_eq!(result.changes.len(), 0);
+        assert!(result.is_balanced());
+    }
+}

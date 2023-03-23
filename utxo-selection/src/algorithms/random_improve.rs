@@ -322,34 +322,12 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::algorithms::test_utils::create_utxo;
     use crate::algorithms::RandomImprove;
     use crate::estimators::dummy_estimator::DummyFeeEstimate;
     use crate::{InputOutputSetup, InputSelectionAlgorithm};
-    use dcspark_core::tx::{
-        TransactionAsset, TransactionId, UTxOBuilder, UTxODetails, UtxoPointer,
-    };
-    use dcspark_core::{Address, OutputIndex, Regulated, UTxOStore, Value};
-    use std::sync::Arc;
-
-    pub fn create_utxo(
-        tx: u64,
-        index: u64,
-        address: String,
-        value: Value<Regulated>,
-        assets: Vec<TransactionAsset>,
-    ) -> UTxODetails {
-        UTxODetails {
-            pointer: UtxoPointer {
-                transaction_id: TransactionId::new(tx.to_string()),
-                output_index: OutputIndex::new(index),
-            },
-            address: Address::new(address),
-            value,
-            assets,
-            metadata: Arc::new(Default::default()),
-            extra: None,
-        }
-    }
+    use dcspark_core::tx::UTxOBuilder;
+    use dcspark_core::{Address, Regulated, UTxOStore, Value};
 
     #[test]
     fn try_select_dummy_fee() {

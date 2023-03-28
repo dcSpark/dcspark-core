@@ -1,12 +1,13 @@
 use crate::{
     InputOutputSetup, InputSelectionAlgorithm, InputSelectionResult, TransactionFeeEstimator,
+    UTxOStoreSupport,
 };
 use anyhow::{anyhow, Context};
-use dcspark_core::tx::{TransactionAsset, UTxOBuilder, UTxODetails, UtxoPointer};
+use dcspark_core::tx::{TransactionAsset, UTxOBuilder, UTxODetails};
 use dcspark_core::{Address, Balance, Regulated, TokenId, UTxOStore, Value};
 use deps::bigdecimal::ToPrimitive;
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 
 pub struct ThermostatAlgoConfig {
     num_accumulators: usize,
@@ -520,12 +521,8 @@ impl Thermostat {
         }
 
         self.balance_excess(estimator)?;
-        self.split_accumulators(&utxos, estimator)
-    }
-
-    #[allow(unused)]
-    pub fn set_utxos(&mut self, available_inputs: UTxOStore) -> anyhow::Result<()> {
-        self.available_utxos = available_inputs;
+        self.split_accumulators(&utxos, estimator)?;
+        self.available_utxos = utxos;
         Ok(())
     }
 
@@ -646,16 +643,22 @@ impl InputSelectionAlgorithm for Thermostat {
     }
 
     fn available_inputs(&self) -> Vec<Self::InputUtxo> {
-        let selected_pointers: HashSet<UtxoPointer> = HashSet::from_iter(
-            self.selected_inputs
-                .iter()
-                .map(|input| input.pointer.clone()),
-        );
         self.available_utxos
             .iter()
             .map(|(_, utxo)| utxo.as_ref().clone())
-            .filter(|utxo| !selected_pointers.contains(&utxo.pointer))
             .collect()
+    }
+}
+
+impl UTxOStoreSupport for Thermostat {
+    fn set_available_utxos(&mut self, utxos: UTxOStore) -> anyhow::Result<()> {
+        self.available_utxos = utxos;
+        self.reset();
+        Ok(())
+    }
+
+    fn get_available_utxos(&mut self) -> anyhow::Result<UTxOStore> {
+        Ok(self.available_utxos.clone())
     }
 }
 
@@ -883,7 +886,7 @@ mod tests {
             )),
         };
 
-        thermostat.set_utxos(utxos).unwrap();
+        thermostat.set_available_utxos(utxos).unwrap();
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
@@ -977,7 +980,7 @@ mod tests {
             )),
         };
 
-        thermostat.set_utxos(utxos).unwrap();
+        thermostat.set_available_utxos(utxos).unwrap();
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
@@ -1063,7 +1066,7 @@ mod tests {
             )),
         };
 
-        thermostat.set_utxos(utxos).unwrap();
+        thermostat.set_available_utxos(utxos).unwrap();
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
@@ -1185,7 +1188,7 @@ mod tests {
             )),
         };
 
-        thermostat.set_utxos(utxos).unwrap();
+        thermostat.set_available_utxos(utxos).unwrap();
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
@@ -1274,7 +1277,7 @@ mod tests {
             )),
         };
 
-        thermostat.set_utxos(utxos).unwrap();
+        thermostat.set_available_utxos(utxos).unwrap();
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
@@ -1359,7 +1362,7 @@ mod tests {
             )),
         };
 
-        thermostat.set_utxos(utxos).unwrap();
+        thermostat.set_available_utxos(utxos).unwrap();
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
@@ -1431,7 +1434,7 @@ mod tests {
             )),
         };
 
-        thermostat.set_utxos(utxos).unwrap();
+        thermostat.set_available_utxos(utxos).unwrap();
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
@@ -1471,7 +1474,7 @@ mod tests {
             )),
         };
 
-        thermostat.set_utxos(utxos).unwrap();
+        thermostat.set_available_utxos(utxos).unwrap();
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();

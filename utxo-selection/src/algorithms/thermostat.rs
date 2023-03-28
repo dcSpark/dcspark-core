@@ -8,7 +8,10 @@ use dcspark_core::{Address, Balance, Regulated, TokenId, UTxOStore, Value};
 use deps::bigdecimal::ToPrimitive;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use serde::Deserialize;
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ThermostatAlgoConfig {
     num_accumulators: usize,
     num_accumulators_assets: usize,

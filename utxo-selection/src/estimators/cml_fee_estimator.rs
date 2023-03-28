@@ -48,14 +48,12 @@ impl TransactionFeeEstimator for CmlFeeEstimator {
     }
 
     fn fee_for_input(&self, input: &Self::InputUtxo) -> anyhow::Result<Value<Regulated>> {
-        let mut builder = self.builder.clone();
         let converted_input: InputBuilderResult = input.clone().to_cml_input(&self.creds)?;
-        builder
-            .add_input(&converted_input)
-            .map_err(|err| anyhow!("Can't add input: {}", err))?;
-        let fee = builder
-            .min_fee(self.script_calculation)
-            .map_err(|err| anyhow!("can't calculate fees: {}", err))?;
+        let fee = self
+            .builder
+            .fee_for_input(&converted_input)
+            .map_err(|err| anyhow!("Can't check input fee: {}", err))?;
+
         Ok(Value::<Regulated>::from(u64::from(fee)))
     }
 
@@ -68,15 +66,12 @@ impl TransactionFeeEstimator for CmlFeeEstimator {
     }
 
     fn fee_for_output(&self, output: &Self::OutputUtxo) -> anyhow::Result<Value<Regulated>> {
-        let mut builder = self.builder.clone();
         let output: TransactionOutput = output.clone().to_cml_output()?;
         let output = output_to_builder_result(&output);
-        builder
-            .add_output(&output)
+        let fee = self
+            .builder
+            .fee_for_output(&output)
             .map_err(|err| anyhow!("Can't add output: {}", err))?;
-        let fee = builder
-            .min_fee(self.script_calculation)
-            .map_err(|err| anyhow!("can't calculate fees: {}", err))?;
 
         Ok(Value::<Regulated>::from(u64::from(fee)))
     }

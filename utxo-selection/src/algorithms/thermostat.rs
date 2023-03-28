@@ -1,14 +1,17 @@
-use crate::algorithm::UTxOStoreSupport;
 use crate::{
     InputOutputSetup, InputSelectionAlgorithm, InputSelectionResult, TransactionFeeEstimator,
+    UTxOStoreSupport,
 };
 use anyhow::{anyhow, Context};
 use dcspark_core::tx::{TransactionAsset, UTxOBuilder, UTxODetails};
 use dcspark_core::{Address, Balance, Regulated, TokenId, UTxOStore, Value};
 use deps::bigdecimal::ToPrimitive;
+use serde::Deserialize;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ThermostatAlgoConfig {
     num_accumulators: usize,
     num_accumulators_assets: usize,
@@ -151,7 +154,18 @@ impl Thermostat {
             // here we take the largest available UTxO for this given
             // asset.
             .iter_token_ordered_by_value_rev(asset)
-            .next()
+            .find(|utxo| {
+                // the reasoning for the following 2 checks is that we want to only select the utxo that consists only the asset
+                // that we want to unwrap and nothing else (The utxo can have mixed assets and this is something unhandled later
+                // in the algorithm, so we want to avoid a situation)
+                // TODO: Those checks will require introducing the cleanup strategy algorithm which will be responsible for cleaning up mixed utxos, which
+                // are purposely not used (so eventually they will be used) - the cleanup is required to be implemented (or any other way of handling the issue presented here)
+                utxo.assets.len() <= 1
+                    && utxo
+                        .assets
+                        .iter()
+                        .all(|tx_asset| &tx_asset.fingerprint == asset)
+            })
             .cloned()
             .ok_or_else(|| anyhow!("No more input to select for {asset}"))?;
 
@@ -470,7 +484,7 @@ impl Thermostat {
         //
         // this value is later popped out so we don't do something silly on the
         // handling of re-balancing the excess
-        if self.asset_balance.is_empty() {
+        if self.asset_balance.is_empty() || assets.is_empty() {
             assets.push(self.config.main_token.clone());
         }
         let mut empty = vec![false; assets.len()];
@@ -479,7 +493,7 @@ impl Thermostat {
         while self.remaining_number_inputs_allowed(estimator)? > 0 {
             let asset = assets
                 .get(index)
-                .expect("We created it with the available values and index is capped by the len");
+                .unwrap_or_else(|| panic!("We created it with the available values and index is capped by the len: index: {}, assets: {:?}", index, assets));
 
             if !empty[index] {
                 if utxos.number_utxos_for_token(asset) <= self.config.num_accumulators {
@@ -499,7 +513,9 @@ impl Thermostat {
         }
         // We pop out the TokenId::MAIN so we don't do something silly on the
         // handling of re-balancing the excess
-        if self.asset_balance.is_empty() {
+        if self.asset_balance.is_empty()
+            || (assets.len() == 1 && assets.first().cloned().unwrap() == self.config.main_token)
+        {
             let _ = assets.pop();
         }
 
@@ -508,12 +524,8 @@ impl Thermostat {
         }
 
         self.balance_excess(estimator)?;
-        self.split_accumulators(&utxos, estimator)
-    }
-
-    #[allow(unused)]
-    pub fn set_utxos(&mut self, available_inputs: UTxOStore) -> anyhow::Result<()> {
-        self.available_utxos = available_inputs;
+        self.split_accumulators(&utxos, estimator)?;
+        self.available_utxos = utxos;
         Ok(())
     }
 
@@ -528,20 +540,22 @@ impl Thermostat {
     }
 }
 
-impl UTxOStoreSupport for Thermostat {
-    fn set_available_utxos(&mut self, utxos: UTxOStore) -> anyhow::Result<()> {
-        self.available_utxos = utxos;
-        Ok(())
-    }
-
-    fn get_available_utxos(&mut self) -> anyhow::Result<UTxOStore> {
-        Ok(self.available_utxos.clone())
-    }
-}
-
 impl InputSelectionAlgorithm for Thermostat {
     type InputUtxo = UTxODetails;
     type OutputUtxo = UTxOBuilder;
+
+    fn set_available_inputs(
+        &mut self,
+        available_inputs: Vec<Self::InputUtxo>,
+    ) -> anyhow::Result<()> {
+        let mut utxos = UTxOStore::new().thaw();
+        for input in available_inputs.into_iter() {
+            utxos.insert(input)?
+        }
+        self.available_utxos = utxos.freeze();
+        self.reset();
+        Ok(())
+    }
 
     fn select_inputs<
         Estimate: TransactionFeeEstimator<InputUtxo = Self::InputUtxo, OutputUtxo = Self::OutputUtxo>,
@@ -629,6 +643,25 @@ impl InputSelectionAlgorithm for Thermostat {
                 .collect(),
             fee: estimator.min_required_fee()?,
         })
+    }
+
+    fn available_inputs(&self) -> Vec<Self::InputUtxo> {
+        self.available_utxos
+            .iter()
+            .map(|(_, utxo)| utxo.as_ref().clone())
+            .collect()
+    }
+}
+
+impl UTxOStoreSupport for Thermostat {
+    fn set_available_utxos(&mut self, utxos: UTxOStore) -> anyhow::Result<()> {
+        self.available_utxos = utxos;
+        self.reset();
+        Ok(())
+    }
+
+    fn get_available_utxos(&mut self) -> anyhow::Result<UTxOStore> {
+        Ok(self.available_utxos.clone())
     }
 }
 
@@ -856,7 +889,7 @@ mod tests {
             )),
         };
 
-        thermostat.set_utxos(utxos).unwrap();
+        thermostat.set_available_utxos(utxos).unwrap();
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
@@ -950,7 +983,7 @@ mod tests {
             )),
         };
 
-        thermostat.set_utxos(utxos).unwrap();
+        thermostat.set_available_utxos(utxos).unwrap();
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
@@ -1036,7 +1069,7 @@ mod tests {
             )),
         };
 
-        thermostat.set_utxos(utxos).unwrap();
+        thermostat.set_available_utxos(utxos).unwrap();
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
@@ -1158,7 +1191,7 @@ mod tests {
             )),
         };
 
-        thermostat.set_utxos(utxos).unwrap();
+        thermostat.set_available_utxos(utxos).unwrap();
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
@@ -1247,7 +1280,7 @@ mod tests {
             )),
         };
 
-        thermostat.set_utxos(utxos).unwrap();
+        thermostat.set_available_utxos(utxos).unwrap();
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
@@ -1332,7 +1365,7 @@ mod tests {
             )),
         };
 
-        thermostat.set_utxos(utxos).unwrap();
+        thermostat.set_available_utxos(utxos).unwrap();
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
@@ -1404,7 +1437,7 @@ mod tests {
             )),
         };
 
-        thermostat.set_utxos(utxos).unwrap();
+        thermostat.set_available_utxos(utxos).unwrap();
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();
@@ -1444,7 +1477,7 @@ mod tests {
             )),
         };
 
-        thermostat.set_utxos(utxos).unwrap();
+        thermostat.set_available_utxos(utxos).unwrap();
         estimator.add_output(output).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, setup).unwrap();

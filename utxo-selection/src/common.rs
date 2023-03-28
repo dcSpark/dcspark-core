@@ -1,4 +1,4 @@
-use dcspark_core::tx::TransactionAsset;
+use dcspark_core::tx::{TransactionAsset, UTxOBuilder, UTxODetails};
 use dcspark_core::{Address, Balance, Regulated, TokenId, Value};
 use std::collections::HashMap;
 
@@ -26,6 +26,56 @@ impl<InputUtxo: Clone, OutputUtxo: Clone> Default for InputOutputSetup<InputUtxo
             fixed_inputs: vec![],
             fixed_outputs: vec![],
             change_address: None,
+        }
+    }
+}
+
+impl InputOutputSetup<UTxODetails, UTxOBuilder> {
+    pub fn from_fixed_inputs_and_outputs(
+        inputs: Vec<UTxODetails>,
+        outputs: Vec<UTxOBuilder>,
+        change_address: Option<Address>,
+    ) -> Self {
+        let mut input_balance = Value::<Regulated>::zero();
+        let mut input_asset_balance = HashMap::<TokenId, TransactionAsset>::new();
+
+        for input in inputs.iter() {
+            input_balance += &input.value;
+            for asset in input.assets.iter() {
+                input_asset_balance
+                    .entry(asset.fingerprint.clone())
+                    .or_insert(TransactionAsset::new(
+                        asset.policy_id.clone(),
+                        asset.asset_name.clone(),
+                        asset.fingerprint.clone(),
+                    ))
+                    .quantity += &asset.quantity;
+            }
+        }
+
+        let mut output_balance = Value::<Regulated>::zero();
+        let mut output_asset_balance = HashMap::<TokenId, TransactionAsset>::new();
+        for output in outputs.iter() {
+            output_balance += &output.value;
+            for asset in output.assets.iter() {
+                output_asset_balance
+                    .entry(asset.fingerprint.clone())
+                    .or_insert(TransactionAsset::new(
+                        asset.policy_id.clone(),
+                        asset.asset_name.clone(),
+                        asset.fingerprint.clone(),
+                    ))
+                    .quantity += &asset.quantity;
+            }
+        }
+        Self {
+            input_balance,
+            input_asset_balance,
+            output_balance,
+            output_asset_balance,
+            fixed_inputs: inputs,
+            fixed_outputs: outputs,
+            change_address,
         }
     }
 }
@@ -95,5 +145,34 @@ impl<InputUtxo: Clone, OutputUtxo: Clone> InputSelectionResult<InputUtxo, Output
         }
 
         are_assets_balanced(&self.input_asset_balance, &self.output_asset_balance)
+    }
+}
+
+impl InputSelectionResult<UTxODetails, UTxOBuilder> {
+    pub fn are_utxos_balanced(&self) -> bool {
+        if !self.is_balanced() {
+            return false;
+        }
+
+        let mut tokens_map = HashMap::<TokenId, Balance<Regulated>>::new();
+        for input in self.fixed_inputs.iter().chain(self.chosen_inputs.iter()) {
+            *tokens_map.entry(TokenId::MAIN).or_default() += &input.value;
+            for asset in input.assets.iter() {
+                *tokens_map.entry(asset.fingerprint.clone()).or_default() += &asset.quantity;
+            }
+        }
+        for output in self.fixed_outputs.iter().chain(self.changes.iter()) {
+            *tokens_map.entry(TokenId::MAIN).or_default() -= &output.value;
+            for asset in output.assets.iter() {
+                *tokens_map.entry(asset.fingerprint.clone()).or_default() -= &asset.quantity;
+            }
+        }
+        *tokens_map.entry(TokenId::MAIN).or_default() -= &self.fee;
+        for balance in tokens_map.values() {
+            if !balance.balanced() {
+                return false;
+            }
+        }
+        true
     }
 }

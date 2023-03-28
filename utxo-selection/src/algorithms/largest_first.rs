@@ -1,7 +1,7 @@
 use crate::algorithm::InputSelectionAlgorithm;
-use crate::calculate_main_token_balance;
 use crate::common::{InputOutputSetup, InputSelectionResult};
 use crate::estimate::TransactionFeeEstimator;
+use crate::{calculate_main_token_balance, UTxOStoreSupport};
 use anyhow::anyhow;
 use dcspark_core::tx::{TransactionAsset, UTxOBuilder, UTxODetails};
 use dcspark_core::{Regulated, TokenId, UTxOStore};
@@ -35,9 +35,32 @@ impl TryFrom<Vec<UTxODetails>> for LargestFirst {
     }
 }
 
+impl UTxOStoreSupport for LargestFirst {
+    fn set_available_utxos(&mut self, utxos: UTxOStore) -> anyhow::Result<()> {
+        self.available_inputs = utxos;
+        Ok(())
+    }
+
+    fn get_available_utxos(&mut self) -> anyhow::Result<UTxOStore> {
+        Ok(self.available_inputs.clone())
+    }
+}
+
 impl InputSelectionAlgorithm for LargestFirst {
     type InputUtxo = UTxODetails;
     type OutputUtxo = UTxOBuilder;
+
+    fn set_available_inputs(
+        &mut self,
+        available_inputs: Vec<Self::InputUtxo>,
+    ) -> anyhow::Result<()> {
+        let mut utxo_store = UTxOStore::new().thaw();
+        for input in available_inputs.into_iter() {
+            utxo_store.insert(input)?;
+        }
+        self.available_inputs = utxo_store.freeze();
+        Ok(())
+    }
 
     fn select_inputs<
         Estimate: TransactionFeeEstimator<InputUtxo = Self::InputUtxo, OutputUtxo = Self::OutputUtxo>,
@@ -109,6 +132,13 @@ impl InputSelectionAlgorithm for LargestFirst {
             input_asset_balance: asset_input_balance,
             output_asset_balance: asset_output_balance,
         })
+    }
+
+    fn available_inputs(&self) -> Vec<Self::InputUtxo> {
+        self.available_inputs
+            .iter()
+            .map(|(_, v)| v.as_ref().clone())
+            .collect::<Vec<_>>()
     }
 }
 
@@ -201,45 +231,13 @@ pub fn select_largest_input_for(
 
 #[cfg(test)]
 mod tests {
+    use crate::algorithms::test_utils::{create_asset, create_utxo};
     use crate::algorithms::LargestFirst;
     use crate::estimators::dummy_estimator::DummyFeeEstimate;
     use crate::{InputOutputSetup, InputSelectionAlgorithm};
-    use dcspark_core::tx::{TransactionAsset, TransactionId, UTxODetails, UtxoPointer};
-    use dcspark_core::{
-        Address, AssetName, OutputIndex, PolicyId, Regulated, TokenId, UTxOStore, Value,
-    };
+    use dcspark_core::tx::TransactionAsset;
+    use dcspark_core::{OutputIndex, Regulated, TokenId, UTxOStore, Value};
     use std::collections::HashMap;
-    use std::sync::Arc;
-
-    pub fn create_utxo(
-        tx: u64,
-        index: u64,
-        address: String,
-        value: Value<Regulated>,
-        assets: Vec<TransactionAsset>,
-    ) -> UTxODetails {
-        UTxODetails {
-            pointer: UtxoPointer {
-                transaction_id: TransactionId::new(tx.to_string()),
-                output_index: OutputIndex::new(index),
-            },
-            address: Address::new(address),
-            value,
-            assets,
-            metadata: Arc::new(Default::default()),
-            extra: None,
-        }
-    }
-
-    pub fn create_asset(fingerprint: String, quantity: Value<Regulated>) -> TransactionAsset {
-        let fingerprint = TokenId::new(fingerprint);
-        TransactionAsset {
-            policy_id: PolicyId::new(fingerprint.as_ref().to_string()),
-            asset_name: AssetName::new(fingerprint.as_ref().to_string()),
-            fingerprint,
-            quantity,
-        }
-    }
 
     #[test]
     fn try_select_dummy_fee() {

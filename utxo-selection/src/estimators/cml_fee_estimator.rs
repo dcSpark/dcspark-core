@@ -48,14 +48,12 @@ impl TransactionFeeEstimator for CmlFeeEstimator {
     }
 
     fn fee_for_input(&self, input: &Self::InputUtxo) -> anyhow::Result<Value<Regulated>> {
-        let mut builder = self.builder.clone();
         let converted_input: InputBuilderResult = input.clone().to_cml_input(&self.creds)?;
-        builder
-            .add_input(&converted_input)
-            .map_err(|err| anyhow!("Can't add input: {}", err))?;
-        let fee = builder
-            .min_fee(self.script_calculation)
-            .map_err(|err| anyhow!("can't calculate fees: {}", err))?;
+        let fee = self
+            .builder
+            .fee_for_input(&converted_input)
+            .map_err(|err| anyhow!("Can't check input fee: {}", err))?;
+
         Ok(Value::<Regulated>::from(u64::from(fee)))
     }
 
@@ -68,15 +66,12 @@ impl TransactionFeeEstimator for CmlFeeEstimator {
     }
 
     fn fee_for_output(&self, output: &Self::OutputUtxo) -> anyhow::Result<Value<Regulated>> {
-        let mut builder = self.builder.clone();
         let output: TransactionOutput = output.clone().to_cml_output()?;
         let output = output_to_builder_result(&output);
-        builder
-            .add_output(&output)
+        let fee = self
+            .builder
+            .fee_for_output(&output)
             .map_err(|err| anyhow!("Can't add output: {}", err))?;
-        let fee = builder
-            .min_fee(self.script_calculation)
-            .map_err(|err| anyhow!("can't calculate fees: {}", err))?;
 
         Ok(Value::<Regulated>::from(u64::from(fee)))
     }
@@ -115,14 +110,13 @@ mod tests {
     use cardano_multiplatform_lib::UnitInterval;
     use std::sync::Arc;
 
-    use crate::algorithm::UTxOStoreSupport;
     use crate::algorithms::{Thermostat, ThermostatAlgoConfig};
     use crate::estimators::CmlFeeEstimator;
     use crate::{InputOutputSetup, InputSelectionAlgorithm};
     use dcspark_core::tx::{
         CardanoPaymentCredentials, TransactionId, UTxOBuilder, UTxODetails, UtxoPointer,
     };
-    use dcspark_core::{Address, UTxOStore, Value};
+    use dcspark_core::{Address, Value};
 
     fn builder_config() -> TransactionBuilderConfig {
         let coefficient = BigNum::from_str("44").unwrap();
@@ -166,17 +160,15 @@ mod tests {
 
         let mut thermostat = Thermostat::new(ThermostatAlgoConfig::default());
 
-        let mut store = UTxOStore::new().thaw();
-        store.insert(UTxODetails {
+        let store = vec![UTxODetails {
             pointer: UtxoPointer { transaction_id: TransactionId::new("ac8f9af3d7760348030515e007c84584537ad056ada73c8a0b86ada14b22d4e0"), output_index: Default::default() },
             address: Address::new("addr1q9meks43s2gg5w8s67n4wjfy476t6scg6h34x497le6j886pgt7rsny5d0ncq0ncm8mdm4xag8ej46fsf4fuxsnuhyxq4r0mlu"),
             value: Value::from(10000000),
             assets: vec![],
             metadata: Arc::new(Default::default()),
             extra: None
-        }).unwrap();
-        let store = store.freeze();
-        thermostat.set_available_utxos(store).unwrap();
+        }];
+        thermostat.set_available_inputs(store).unwrap();
 
         let result = thermostat.select_inputs(&mut estimator, InputOutputSetup {
             input_balance: Default::default(),

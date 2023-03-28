@@ -5,6 +5,6 @@ mod algorithm;
 mod common;
 mod estimate;
 
-pub use algorithm::InputSelectionAlgorithm;
+pub use algorithm::*;
 pub use common::*;
 pub use estimate::*;

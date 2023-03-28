@@ -43,6 +43,15 @@ impl InputSelectionAlgorithm for RandomImprove {
     type InputUtxo = UTxODetails;
     type OutputUtxo = UTxOBuilder;
 
+    fn set_available_inputs(
+        &mut self,
+        available_inputs: Vec<Self::InputUtxo>,
+    ) -> anyhow::Result<()> {
+        let _available_indices = BTreeSet::from_iter(0..available_inputs.len());
+        self.available_inputs = available_inputs;
+        Ok(())
+    }
+
     fn select_inputs<
         Estimate: TransactionFeeEstimator<InputUtxo = Self::InputUtxo, OutputUtxo = Self::OutputUtxo>,
     >(
@@ -165,6 +174,13 @@ impl InputSelectionAlgorithm for RandomImprove {
             input_asset_balance: asset_input_balance,
             output_asset_balance: asset_output_balance,
         })
+    }
+
+    fn available_inputs(&self) -> Vec<Self::InputUtxo> {
+        self.available_indices
+            .iter()
+            .map(|index| self.available_inputs[*index].clone())
+            .collect::<Vec<_>>()
     }
 }
 
@@ -306,34 +322,12 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::algorithms::test_utils::create_utxo;
     use crate::algorithms::RandomImprove;
     use crate::estimators::dummy_estimator::DummyFeeEstimate;
     use crate::{InputOutputSetup, InputSelectionAlgorithm};
-    use dcspark_core::tx::{
-        TransactionAsset, TransactionId, UTxOBuilder, UTxODetails, UtxoPointer,
-    };
-    use dcspark_core::{Address, OutputIndex, Regulated, UTxOStore, Value};
-    use std::sync::Arc;
-
-    pub fn create_utxo(
-        tx: u64,
-        index: u64,
-        address: String,
-        value: Value<Regulated>,
-        assets: Vec<TransactionAsset>,
-    ) -> UTxODetails {
-        UTxODetails {
-            pointer: UtxoPointer {
-                transaction_id: TransactionId::new(tx.to_string()),
-                output_index: OutputIndex::new(index),
-            },
-            address: Address::new(address),
-            value,
-            assets,
-            metadata: Arc::new(Default::default()),
-            extra: None,
-        }
-    }
+    use dcspark_core::tx::UTxOBuilder;
+    use dcspark_core::{Address, Regulated, UTxOStore, Value};
 
     #[test]
     fn try_select_dummy_fee() {

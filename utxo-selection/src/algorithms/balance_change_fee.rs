@@ -7,25 +7,34 @@ use dcspark_core::tx::{UTxOBuilder, UTxODetails};
 use dcspark_core::{Balance, UTxOStore};
 
 #[derive(Default)]
-pub struct FeeChangeBalancer {}
+pub struct FeeChangeBalancer {
+    available_inputs: UTxOStore,
+}
 
 impl UTxOStoreSupport for FeeChangeBalancer {
-    fn set_available_utxos(&mut self, _utxos: UTxOStore) -> anyhow::Result<()> {
+    fn set_available_utxos(&mut self, utxos: UTxOStore) -> anyhow::Result<()> {
+        self.available_inputs = utxos;
         Ok(())
     }
 
     fn get_available_utxos(&mut self) -> anyhow::Result<UTxOStore> {
-        Ok(Default::default())
+        Ok(self.available_inputs.clone())
     }
 }
+
 impl InputSelectionAlgorithm for FeeChangeBalancer {
     type InputUtxo = UTxODetails;
     type OutputUtxo = UTxOBuilder;
 
     fn set_available_inputs(
         &mut self,
-        _available_inputs: Vec<Self::InputUtxo>,
+        available_inputs: Vec<Self::InputUtxo>,
     ) -> anyhow::Result<()> {
+        let mut utxo_store = UTxOStore::new().thaw();
+        for input in available_inputs.into_iter() {
+            utxo_store.insert(input)?;
+        }
+        self.available_inputs = utxo_store.freeze();
         Ok(())
     }
 
@@ -77,7 +86,10 @@ impl InputSelectionAlgorithm for FeeChangeBalancer {
     }
 
     fn available_inputs(&self) -> Vec<Self::InputUtxo> {
-        vec![]
+        self.available_inputs
+            .iter()
+            .map(|(_, v)| v.as_ref().clone())
+            .collect::<Vec<_>>()
     }
 }
 

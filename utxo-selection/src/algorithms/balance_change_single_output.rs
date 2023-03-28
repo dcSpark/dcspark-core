@@ -8,6 +8,7 @@ use dcspark_core::{Balance, Regulated, UTxOStore, Value};
 
 #[derive(Default)]
 pub struct SingleOutputChangeBalancer {
+    available_inputs: UTxOStore,
     extra: Option<String>,
 }
 
@@ -18,12 +19,13 @@ impl SingleOutputChangeBalancer {
 }
 
 impl UTxOStoreSupport for SingleOutputChangeBalancer {
-    fn set_available_utxos(&mut self, _utxos: UTxOStore) -> anyhow::Result<()> {
+    fn set_available_utxos(&mut self, utxos: UTxOStore) -> anyhow::Result<()> {
+        self.available_inputs = utxos;
         Ok(())
     }
 
     fn get_available_utxos(&mut self) -> anyhow::Result<UTxOStore> {
-        Ok(Default::default())
+        Ok(self.available_inputs.clone())
     }
 }
 
@@ -33,8 +35,13 @@ impl InputSelectionAlgorithm for SingleOutputChangeBalancer {
 
     fn set_available_inputs(
         &mut self,
-        _available_inputs: Vec<Self::InputUtxo>,
+        available_inputs: Vec<Self::InputUtxo>,
     ) -> anyhow::Result<()> {
+        let mut utxo_store = UTxOStore::new().thaw();
+        for input in available_inputs.into_iter() {
+            utxo_store.insert(input)?;
+        }
+        self.available_inputs = utxo_store.freeze();
         Ok(())
     }
 
@@ -134,7 +141,10 @@ impl InputSelectionAlgorithm for SingleOutputChangeBalancer {
     }
 
     fn available_inputs(&self) -> Vec<Self::InputUtxo> {
-        vec![]
+        self.available_inputs
+            .iter()
+            .map(|(_, v)| v.as_ref().clone())
+            .collect::<Vec<_>>()
     }
 }
 

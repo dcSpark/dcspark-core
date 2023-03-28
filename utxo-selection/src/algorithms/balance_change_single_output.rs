@@ -1,14 +1,13 @@
 use crate::{
     calculate_asset_balance, calculate_main_token_balance, InputOutputSetup,
-    InputSelectionAlgorithm, InputSelectionResult, TransactionFeeEstimator,
+    InputSelectionAlgorithm, InputSelectionResult, TransactionFeeEstimator, UTxOStoreSupport,
 };
 use anyhow::anyhow;
 use dcspark_core::tx::{TransactionAsset, UTxOBuilder, UTxODetails};
-use dcspark_core::{Balance, Regulated, Value};
+use dcspark_core::{Balance, Regulated, UTxOStore, Value};
 
 #[derive(Default)]
 pub struct SingleOutputChangeBalancer {
-    available_inputs: Vec<UTxODetails>,
     extra: Option<String>,
 }
 
@@ -18,15 +17,24 @@ impl SingleOutputChangeBalancer {
     }
 }
 
+impl UTxOStoreSupport for SingleOutputChangeBalancer {
+    fn set_available_utxos(&mut self, _utxos: UTxOStore) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn get_available_utxos(&mut self) -> anyhow::Result<UTxOStore> {
+        Ok(Default::default())
+    }
+}
+
 impl InputSelectionAlgorithm for SingleOutputChangeBalancer {
     type InputUtxo = UTxODetails;
     type OutputUtxo = UTxOBuilder;
 
     fn set_available_inputs(
         &mut self,
-        available_inputs: Vec<Self::InputUtxo>,
+        _available_inputs: Vec<Self::InputUtxo>,
     ) -> anyhow::Result<()> {
-        self.available_inputs = available_inputs;
         Ok(())
     }
 
@@ -126,7 +134,7 @@ impl InputSelectionAlgorithm for SingleOutputChangeBalancer {
     }
 
     fn available_inputs(&self) -> Vec<Self::InputUtxo> {
-        self.available_inputs.clone()
+        vec![]
     }
 }
 

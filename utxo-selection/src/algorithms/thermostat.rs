@@ -7,7 +7,7 @@ use dcspark_core::tx::{TransactionAsset, UTxOBuilder, UTxODetails};
 use dcspark_core::{Address, Balance, Regulated, TokenId, UTxOStore, Value};
 use deps::bigdecimal::ToPrimitive;
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap};
+use std::collections::HashMap;
 
 pub struct ThermostatAlgoConfig {
     num_accumulators: usize,

@@ -150,7 +150,18 @@ impl Thermostat {
             // here we take the largest available UTxO for this given
             // asset.
             .iter_token_ordered_by_value_rev(asset)
-            .next()
+            .find(|utxo| {
+                // the reasoning for the following 2 checks is that we want to only select the utxo that consists only the asset
+                // that we want to unwrap and nothing else (The utxo can have mixed assets and this is something unhandled later
+                // in the algorithm, so we want to avoid a situation)
+                // TODO: Those checks will require introducing the cleanup strategy algorithm which will be responsible for cleaning up mixed utxos, which
+                // are purposely not used (so eventually they will be used) - the cleanup is required to be implemented (or any other way of handling the issue presented here)
+                utxo.assets.len() <= 1
+                    && utxo
+                        .assets
+                        .iter()
+                        .all(|tx_asset| &tx_asset.fingerprint == asset)
+            })
             .cloned()
             .ok_or_else(|| anyhow!("No more input to select for {asset}"))?;
 

@@ -251,19 +251,34 @@ impl Thermostat {
                 .as_ref()
                 .ok_or_else(|| anyhow!("Change address required"))?;
 
-            let default = UTxOBuilder::new(address.clone(), Value::zero(), vec![]);
-
             {
+                let wmain_excess = if let Balance::Excess(wmain) = self.current_balance(estimate)? {
+                    wmain
+                } else {
+                    Value::zero()
+                };
+
                 // setting the entry in a scope so it does not prevent us from
                 // manipulating `self` later
                 let entry = self.changes.entry(asset.clone());
                 let entry: &mut UTxOBuilder = match entry {
-                    Entry::Occupied(entry) => entry.into_mut(),
+                    Entry::Occupied(entry) => {
+                        let mut_entry = entry.into_mut();
+                        mut_entry.value += &wmain_excess;
+                        self.balance -= &wmain_excess;
+                        mut_entry
+                    }
                     Entry::Vacant(entry) => {
+                        let mut change =
+                            UTxOBuilder::new(address.clone(), wmain_excess.clone(), vec![]);
+                        let fee_for_change = estimate.fee_for_output(&change)?;
+                        change.value -= &fee_for_change;
+                        self.balance -= &wmain_excess - &fee_for_change;
+
                         estimate
-                            .add_output(default.clone())
+                            .add_output(change.clone())
                             .map_err(|err| anyhow!(err))?;
-                        entry.insert(default)
+                        entry.insert(change)
                     }
                 };
 
@@ -287,19 +302,10 @@ impl Thermostat {
                 }
             }
 
-            let excess = if let Balance::Excess(wmain) = self.current_balance(estimate)? {
-                wmain
-            } else {
-                Value::zero()
-            };
-
             let entry = self
                 .changes
                 .get_mut(&asset)
                 .expect("We cannot have a None here since we just added it before");
-
-            entry.value += &excess;
-            self.balance -= excess;
 
             // TODO: the entry.value should be set to the self.current_balance() excess
             // minus cost we might have needed to add the new output change
@@ -338,28 +344,23 @@ impl Thermostat {
                 .as_ref()
                 .ok_or_else(|| anyhow!("Change address required"))?;
 
-            let default = UTxOBuilder::new(address.clone(), Value::zero(), vec![]);
-            let mut inserted = false;
-
-            let entry = match self.changes.entry(self.config.main_token.clone()) {
+            match self.changes.entry(self.config.main_token.clone()) {
                 Entry::Vacant(entry) => {
-                    inserted = true;
-                    entry.insert(default)
+                    let mut change = UTxOBuilder::new(address.clone(), excess.clone(), vec![]);
+                    let fee_for_change = estimate.fee_for_output(&change)?;
+                    change.value -= &fee_for_change;
+                    self.balance -= &excess - &fee_for_change;
+
+                    estimate
+                        .add_output(change.clone())
+                        .map_err(|err| anyhow!(err))?;
+                    entry.insert(change);
                 }
-                Entry::Occupied(entry) => entry.into_mut(),
+                Entry::Occupied(entry) => {
+                    entry.into_mut().value += &excess;
+                    self.balance -= excess;
+                }
             };
-
-            entry.value += &excess;
-            self.balance -= excess;
-
-            if inserted {
-                let current_fee = estimate.min_required_fee()?;
-                estimate.add_output(entry.clone())?;
-                let new_fee = estimate.min_required_fee()?;
-                let paid = new_fee - current_fee;
-                entry.value -= &paid;
-                self.balance += paid;
-            }
         }
 
         Ok(())

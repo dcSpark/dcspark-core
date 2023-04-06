@@ -1,5 +1,6 @@
+use crate::cardano::time::Era;
 use crate::{EventObject, GetNextFrom};
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use dcspark_core::{BlockId, BlockNumber, SlotNumber};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -11,7 +12,7 @@ pub enum CardanoNetworkEvent<Block, Tip> {
 
 impl<Block: Send, Tip: Send> EventObject for CardanoNetworkEvent<Block, Tip> {
     fn is_blockchain_tip(&self) -> bool {
-        matches!(self, CardanoNetworkEvent::Tip(_))
+        matches!(self, CardanoNetworkEvent::Tip { .. })
     }
 }
 
@@ -23,7 +24,7 @@ pub struct BlockEvent {
     pub raw_block: Vec<u8>,
     pub slot_number: SlotNumber,
     pub is_boundary_block: bool,
-    pub epoch: Option<u64>,
+    pub epoch: u64,
 }
 
 impl<Block, Tip> CardanoNetworkEvent<Block, Tip> {
@@ -103,7 +104,7 @@ impl<Tip> GetNextFrom for CardanoNetworkEvent<BlockEvent, Tip> {
 }
 
 impl BlockEvent {
-    pub(crate) fn from_serialized_block(raw_block: &[u8]) -> anyhow::Result<Self> {
+    pub(crate) fn from_serialized_block(raw_block: &[u8], era: &Era) -> anyhow::Result<Self> {
         let block: anyhow::Result<crate::cardano::block::Block> =
             cbored::decode_from_bytes(raw_block).context("failed to deserialize block");
 
@@ -125,7 +126,9 @@ impl BlockEvent {
                 // details, which makes implementing `Serialize` and `Deserialize`more complicated,
                 // unless we serialize this field too.
                 // it can be computed later inside carp, since we don't need this in the bridge.
-                epoch: None,
+                epoch: era
+                    .absolute_slot_to_epoch(header.slot())
+                    .ok_or(anyhow!("can't detect epoch of block"))?,
             })
         } else if let Ok(block) = crate::cardano::byron::ByronBlock::decode(raw_block) {
             let header = block.header();
@@ -136,7 +139,7 @@ impl BlockEvent {
                 block_number: header.block_number(),
                 slot_number: header.slot_number(),
                 is_boundary_block: block.is_boundary(),
-                epoch: Some(header.epoch()),
+                epoch: header.epoch(),
             };
 
             Ok(event)

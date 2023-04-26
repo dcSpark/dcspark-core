@@ -2,7 +2,6 @@ use anyhow::anyhow;
 use cardano_multiplatform_lib::builders::input_builder::InputBuilderResult;
 use cardano_multiplatform_lib::builders::output_builder::SingleOutputBuilderResult;
 use cardano_multiplatform_lib::builders::tx_builder::TransactionBuilder;
-use cardano_multiplatform_lib::ledger::babbage::min_ada::min_ada_required;
 use cardano_multiplatform_lib::ledger::common::value::BigNum;
 use cardano_multiplatform_lib::TransactionOutput;
 use dcspark_core::tx::{CardanoPaymentCredentials, UTxOBuilder, UTxODetails};
@@ -95,8 +94,13 @@ impl TransactionFeeEstimator for CmlFeeEstimator {
     ) -> anyhow::Result<Value<Regulated>> {
         let output: TransactionOutput = output.to_cml_output()?;
 
-        let lovelace = min_ada_required(&output, &self.coins_per_utxo_byte)
-            .map_err(|err| anyhow!("Can't add estimate min ada {}", err))?;
+        let lovelace = cardano_multiplatform_lib::ledger::babbage::min_ada::min_pure_ada(
+            &self.coins_per_utxo_byte,
+            &output.address(),
+            &output.datum(),
+            &output.script_ref(),
+        )
+        .map_err(|err| anyhow!("Can't add estimate min ada {}", err))?;
 
         Ok(Value::from(u64::from(lovelace)))
     }

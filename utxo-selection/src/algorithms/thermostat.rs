@@ -251,19 +251,51 @@ impl Thermostat {
                 .as_ref()
                 .ok_or_else(|| anyhow!("Change address required"))?;
 
-            let default = UTxOBuilder::new(address.clone(), Value::zero(), vec![]);
-
             {
+                let wmain_excess = if let Balance::Excess(wmain) = self.current_balance(estimate)? {
+                    wmain
+                } else {
+                    Value::zero()
+                };
+
                 // setting the entry in a scope so it does not prevent us from
                 // manipulating `self` later
                 let entry = self.changes.entry(asset.clone());
                 let entry: &mut UTxOBuilder = match entry {
-                    Entry::Occupied(entry) => entry.into_mut(),
+                    Entry::Occupied(entry) => {
+                        let mut_entry = entry.into_mut();
+                        mut_entry.value += &wmain_excess;
+                        self.balance -= &wmain_excess;
+                        mut_entry
+                    }
                     Entry::Vacant(entry) => {
-                        estimate
-                            .add_output(default.clone())
-                            .map_err(|err| anyhow!(err))?;
-                        entry.insert(default)
+                        let mut change =
+                            UTxOBuilder::new(address.clone(), wmain_excess.clone(), vec![]);
+
+                        let min_ada_required = estimate.min_value_for_output(change.clone())?;
+
+                        if change.value < min_ada_required {
+                            let diff = &min_ada_required - &change.value;
+                            self.balance -= &diff;
+                            change.value += diff;
+                        }
+
+                        let fee_for_change = estimate.fee_for_output(&change)?;
+                        if change.value < &min_ada_required + &fee_for_change {
+                            self.balance -= &wmain_excess;
+                        } else {
+                            change.value -= &fee_for_change;
+                            self.balance -= &wmain_excess - &fee_for_change;
+                        }
+
+                        estimate.add_output(change.clone()).map_err(|err| {
+                            anyhow!(
+                                "Can't balance excess of asset: {}, change: {:?}",
+                                err,
+                                change
+                            )
+                        })?;
+                        entry.insert(change)
                     }
                 };
 
@@ -287,19 +319,10 @@ impl Thermostat {
                 }
             }
 
-            let excess = if let Balance::Excess(wmain) = self.current_balance(estimate)? {
-                wmain
-            } else {
-                Value::zero()
-            };
-
             let entry = self
                 .changes
                 .get_mut(&asset)
                 .expect("We cannot have a None here since we just added it before");
-
-            entry.value += &excess;
-            self.balance -= excess;
 
             // TODO: the entry.value should be set to the self.current_balance() excess
             // minus cost we might have needed to add the new output change
@@ -338,28 +361,38 @@ impl Thermostat {
                 .as_ref()
                 .ok_or_else(|| anyhow!("Change address required"))?;
 
-            let default = UTxOBuilder::new(address.clone(), Value::zero(), vec![]);
-            let mut inserted = false;
-
-            let entry = match self.changes.entry(self.config.main_token.clone()) {
+            match self.changes.entry(self.config.main_token.clone()) {
                 Entry::Vacant(entry) => {
-                    inserted = true;
-                    entry.insert(default)
+                    let mut change = UTxOBuilder::new(address.clone(), excess.clone(), vec![]);
+                    let min_ada_required = estimate.min_value_for_output(change.clone())?;
+
+                    if min_ada_required > change.value {
+                        return Ok(());
+                    }
+
+                    let fee_for_change = estimate.fee_for_output(&change)?;
+
+                    if change.value < &min_ada_required + &fee_for_change {
+                        return Ok(());
+                    }
+
+                    change.value -= &fee_for_change;
+                    self.balance -= &excess - &fee_for_change;
+
+                    estimate.add_output(change.clone()).map_err(|err| {
+                        anyhow!(
+                            "Can't balance excess of main: {}, change: {:?}",
+                            err,
+                            change
+                        )
+                    })?;
+                    entry.insert(change);
                 }
-                Entry::Occupied(entry) => entry.into_mut(),
+                Entry::Occupied(entry) => {
+                    entry.into_mut().value += &excess;
+                    self.balance -= excess;
+                }
             };
-
-            entry.value += &excess;
-            self.balance -= excess;
-
-            if inserted {
-                let current_fee = estimate.min_required_fee()?;
-                estimate.add_output(entry.clone())?;
-                let new_fee = estimate.min_required_fee()?;
-                let paid = new_fee - current_fee;
-                entry.value -= &paid;
-                self.balance += paid;
-            }
         }
 
         Ok(())
@@ -627,6 +660,14 @@ impl InputSelectionAlgorithm for Thermostat {
             output_balance += &output.value;
         }
 
+        let fee = match &self.balance {
+            Balance::Debt(_debt) => {
+                return Err(anyhow!("Unbalanced ada"));
+            }
+            Balance::Balanced => Value::zero(),
+            Balance::Excess(excess) => excess.clone(),
+        };
+
         Ok(InputSelectionResult {
             input_balance,
             input_asset_balance,
@@ -641,7 +682,7 @@ impl InputSelectionAlgorithm for Thermostat {
                 .chain(self.extra_changes.iter())
                 .cloned()
                 .collect(),
-            fee: estimator.min_required_fee()?,
+            fee,
         })
     }
 
@@ -669,6 +710,7 @@ impl UTxOStoreSupport for Thermostat {
 mod tests {
     use super::*;
     use crate::estimators::ThermostatFeeEstimator;
+    use cardano_multiplatform_lib::ledger::common::value::BigNum;
     use dcspark_core::cardano::Ada;
     use dcspark_core::multisig_plan::MultisigPlan;
     use dcspark_core::network_id::NetworkInfo;
@@ -735,7 +777,8 @@ mod tests {
         .unwrap();
 
         let thermostat = Thermostat::new(thermostat_config());
-        let estimator = ThermostatFeeEstimator::new(NetworkInfo::Testnet, &plan);
+        let estimator =
+            ThermostatFeeEstimator::new(NetworkInfo::Testnet, &plan, BigNum::from(4310));
         (thermostat, estimator)
     }
 

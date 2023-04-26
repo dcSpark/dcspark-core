@@ -1,4 +1,7 @@
 use crate::TransactionFeeEstimator;
+use anyhow::anyhow;
+use cardano_multiplatform_lib::ledger::common::value::BigNum;
+use cardano_multiplatform_lib::TransactionOutput;
 use dcspark_core::multisig_plan::MultisigPlan;
 use dcspark_core::network_id::NetworkInfo;
 use dcspark_core::tx::{UTxOBuilder, UTxODetails};
@@ -21,12 +24,18 @@ pub struct ThermostatFeeEstimator {
     outputs: Vec<UTxOBuilder>,
     inputs: Vec<UTxODetails>,
 
+    coins_per_utxo_byte: BigNum,
+
     asset_balance: HashMap<TokenId, Balance<Regulated>>,
 }
 
 impl ThermostatFeeEstimator {
     #[allow(unused)]
-    pub fn new(network_info: NetworkInfo, plan: &MultisigPlan) -> Self {
+    pub fn new(
+        network_info: NetworkInfo,
+        plan: &MultisigPlan,
+        coins_per_utxo_byte: BigNum,
+    ) -> Self {
         // compute the cost of an empty transaction this is with the
         // the native script included so we know what it will cost
         // already from there.
@@ -74,6 +83,7 @@ impl ThermostatFeeEstimator {
 
             outputs: Vec::new(),
             inputs: Vec::new(),
+            coins_per_utxo_byte,
             asset_balance: HashMap::new(),
         }
     }
@@ -138,6 +148,23 @@ impl TransactionFeeEstimator for ThermostatFeeEstimator {
         self.current_size += self.size_of_one_output;
         self.outputs.push(output);
         Ok(())
+    }
+
+    fn min_value_for_output(
+        &mut self,
+        output: Self::OutputUtxo,
+    ) -> anyhow::Result<Value<Regulated>> {
+        let output: TransactionOutput = output.to_cml_output()?;
+
+        let lovelace = cardano_multiplatform_lib::ledger::babbage::min_ada::min_pure_ada(
+            &self.coins_per_utxo_byte,
+            &output.address(),
+            &output.datum(),
+            &output.script_ref(),
+        )
+        .map_err(|err| anyhow!("Can't add estimate min ada {}", err))?;
+
+        Ok(Value::from(u64::from(lovelace)))
     }
 
     fn current_size(&self) -> anyhow::Result<usize> {

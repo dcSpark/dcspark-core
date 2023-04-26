@@ -2,6 +2,7 @@ use anyhow::anyhow;
 use cardano_multiplatform_lib::builders::input_builder::InputBuilderResult;
 use cardano_multiplatform_lib::builders::output_builder::SingleOutputBuilderResult;
 use cardano_multiplatform_lib::builders::tx_builder::TransactionBuilder;
+use cardano_multiplatform_lib::ledger::common::value::BigNum;
 use cardano_multiplatform_lib::TransactionOutput;
 use dcspark_core::tx::{CardanoPaymentCredentials, UTxOBuilder, UTxODetails};
 use dcspark_core::{Regulated, Value};
@@ -12,6 +13,7 @@ pub struct CmlFeeEstimator {
     builder: TransactionBuilder,
     script_calculation: bool,
     creds: CardanoPaymentCredentials,
+    coins_per_utxo_byte: BigNum,
 }
 
 const DEFAULT_TX_SIZE: usize = 16384;
@@ -21,6 +23,7 @@ impl CmlFeeEstimator {
         mut tx_builder: TransactionBuilder,
         credentials: CardanoPaymentCredentials,
         script_calculation: bool,
+        coins_per_utxo_byte: BigNum,
     ) -> anyhow::Result<Self> {
         let min_fee = tx_builder
             .min_fee(script_calculation)
@@ -30,6 +33,7 @@ impl CmlFeeEstimator {
             builder: tx_builder,
             script_calculation,
             creds: credentials,
+            coins_per_utxo_byte,
         })
     }
 }
@@ -82,6 +86,23 @@ impl TransactionFeeEstimator for CmlFeeEstimator {
         self.builder
             .add_output(&output)
             .map_err(|err| anyhow!("Can't add output {}", err))
+    }
+
+    fn min_value_for_output(
+        &mut self,
+        output: Self::OutputUtxo,
+    ) -> anyhow::Result<Value<Regulated>> {
+        let output: TransactionOutput = output.to_cml_output()?;
+
+        let lovelace = cardano_multiplatform_lib::ledger::babbage::min_ada::min_pure_ada(
+            &self.coins_per_utxo_byte,
+            &output.address(),
+            &output.datum(),
+            &output.script_ref(),
+        )
+        .map_err(|err| anyhow!("Can't add estimate min ada {}", err))?;
+
+        Ok(Value::from(u64::from(lovelace)))
     }
 
     fn current_size(&self) -> anyhow::Result<usize> {
@@ -155,6 +176,7 @@ mod tests {
             ),
             CardanoPaymentCredentials::PaymentKey,
             true,
+            BigNum::from(4310),
         )
         .unwrap();
 

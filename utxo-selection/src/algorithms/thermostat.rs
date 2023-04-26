@@ -281,8 +281,12 @@ impl Thermostat {
                         }
 
                         let fee_for_change = estimate.fee_for_output(&change)?;
-                        change.value -= &fee_for_change;
-                        self.balance -= &wmain_excess - &fee_for_change;
+                        if change.value < &min_ada_required + &fee_for_change {
+                            self.balance -= &wmain_excess;
+                        } else {
+                            change.value -= &fee_for_change;
+                            self.balance -= &wmain_excess - &fee_for_change;
+                        }
 
                         estimate.add_output(change.clone()).map_err(|err| {
                             anyhow!(
@@ -367,6 +371,11 @@ impl Thermostat {
                     }
 
                     let fee_for_change = estimate.fee_for_output(&change)?;
+
+                    if change.value < &min_ada_required + &fee_for_change {
+                        return Ok(());
+                    }
+
                     change.value -= &fee_for_change;
                     self.balance -= &excess - &fee_for_change;
 

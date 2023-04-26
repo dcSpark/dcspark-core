@@ -275,9 +275,13 @@ impl Thermostat {
                         change.value -= &fee_for_change;
                         self.balance -= &wmain_excess - &fee_for_change;
 
-                        estimate
-                            .add_output(change.clone())
-                            .map_err(|err| anyhow!(err))?;
+                        estimate.add_output(change.clone()).map_err(|err| {
+                            anyhow!(
+                                "Can't balance excess of asset: {}, change: {:?}",
+                                err,
+                                change
+                            )
+                        })?;
                         entry.insert(change)
                     }
                 };
@@ -351,9 +355,13 @@ impl Thermostat {
                     change.value -= &fee_for_change;
                     self.balance -= &excess - &fee_for_change;
 
-                    estimate
-                        .add_output(change.clone())
-                        .map_err(|err| anyhow!(err))?;
+                    estimate.add_output(change.clone()).map_err(|err| {
+                        anyhow!(
+                            "Can't balance excess of main: {}, change: {:?}",
+                            err,
+                            change
+                        )
+                    })?;
                     entry.insert(change);
                 }
                 Entry::Occupied(entry) => {

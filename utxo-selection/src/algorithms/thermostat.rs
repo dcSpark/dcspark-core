@@ -701,6 +701,7 @@ impl UTxOStoreSupport for Thermostat {
 mod tests {
     use super::*;
     use crate::estimators::ThermostatFeeEstimator;
+    use cardano_multiplatform_lib::ledger::common::value::BigNum;
     use dcspark_core::cardano::Ada;
     use dcspark_core::multisig_plan::MultisigPlan;
     use dcspark_core::network_id::NetworkInfo;
@@ -708,7 +709,6 @@ mod tests {
     use dcspark_core::{cardano, AssetName, OutputIndex, PolicyId};
     use deps::serde_json;
     use std::sync::Arc;
-    use cardano_multiplatform_lib::ledger::common::value::BigNum;
 
     fn verify_balanced_result(result: &InputSelectionResult<UTxODetails, UTxOBuilder>) {
         assert_eq!(
@@ -768,7 +768,8 @@ mod tests {
         .unwrap();
 
         let thermostat = Thermostat::new(thermostat_config());
-        let estimator = ThermostatFeeEstimator::new(NetworkInfo::Testnet, &plan, BigNum::from(4310));
+        let estimator =
+            ThermostatFeeEstimator::new(NetworkInfo::Testnet, &plan, BigNum::from(4310));
         (thermostat, estimator)
     }
 

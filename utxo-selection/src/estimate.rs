@@ -15,7 +15,10 @@ pub trait TransactionFeeEstimator {
 
     fn fee_for_output(&self, output: &Self::OutputUtxo) -> anyhow::Result<Value<Regulated>>;
     fn add_output(&mut self, output: Self::OutputUtxo) -> anyhow::Result<()>;
-    fn min_value_for_output(&mut self, output: Self::OutputUtxo) -> anyhow::Result<Value<Regulated>>;
+    fn min_value_for_output(
+        &mut self,
+        output: Self::OutputUtxo,
+    ) -> anyhow::Result<Value<Regulated>>;
 
     fn current_size(&self) -> anyhow::Result<usize>;
     fn max_size(&self) -> anyhow::Result<usize>;

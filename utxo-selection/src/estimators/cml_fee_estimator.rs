@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use cardano_multiplatform_lib::builders::input_builder::InputBuilderResult;
 use cardano_multiplatform_lib::builders::output_builder::SingleOutputBuilderResult;
-use cardano_multiplatform_lib::builders::tx_builder::{TransactionBuilder};
+use cardano_multiplatform_lib::builders::tx_builder::TransactionBuilder;
 use cardano_multiplatform_lib::ledger::babbage::min_ada::min_ada_required;
 use cardano_multiplatform_lib::ledger::common::value::BigNum;
 use cardano_multiplatform_lib::TransactionOutput;
@@ -89,7 +89,10 @@ impl TransactionFeeEstimator for CmlFeeEstimator {
             .map_err(|err| anyhow!("Can't add output {}", err))
     }
 
-    fn min_value_for_output(&mut self, output: Self::OutputUtxo) -> anyhow::Result<Value<Regulated>> {
+    fn min_value_for_output(
+        &mut self,
+        output: Self::OutputUtxo,
+    ) -> anyhow::Result<Value<Regulated>> {
         let output: TransactionOutput = output.to_cml_output()?;
 
         let lovelace = min_ada_required(&output, &self.coins_per_utxo_byte)

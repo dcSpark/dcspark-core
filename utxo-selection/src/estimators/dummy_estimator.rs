@@ -39,7 +39,10 @@ impl<Input: Clone, Output: Clone> TransactionFeeEstimator for DummyFeeEstimate<I
         Ok(())
     }
 
-    fn min_value_for_output(&mut self, _output: Self::OutputUtxo) -> anyhow::Result<Value<Regulated>> {
+    fn min_value_for_output(
+        &mut self,
+        _output: Self::OutputUtxo,
+    ) -> anyhow::Result<Value<Regulated>> {
         Ok(Value::zero())
     }
 

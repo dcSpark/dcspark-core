@@ -271,6 +271,15 @@ impl Thermostat {
                     Entry::Vacant(entry) => {
                         let mut change =
                             UTxOBuilder::new(address.clone(), wmain_excess.clone(), vec![]);
+
+                        let min_ada_required = estimate.min_value_for_output(change.clone())?;
+
+                        if change.value < min_ada_required {
+                            let diff = &min_ada_required - &change.value;
+                            self.balance -= &diff;
+                            change.value += diff;
+                        }
+
                         let fee_for_change = estimate.fee_for_output(&change)?;
                         change.value -= &fee_for_change;
                         self.balance -= &wmain_excess - &fee_for_change;
@@ -351,6 +360,12 @@ impl Thermostat {
             match self.changes.entry(self.config.main_token.clone()) {
                 Entry::Vacant(entry) => {
                     let mut change = UTxOBuilder::new(address.clone(), excess.clone(), vec![]);
+                    let min_ada_required = estimate.min_value_for_output(change.clone())?;
+
+                    if min_ada_required > change.value {
+                        return Ok(());
+                    }
+
                     let fee_for_change = estimate.fee_for_output(&change)?;
                     change.value -= &fee_for_change;
                     self.balance -= &excess - &fee_for_change;
@@ -636,6 +651,14 @@ impl InputSelectionAlgorithm for Thermostat {
             output_balance += &output.value;
         }
 
+        let fee = match &self.balance {
+            Balance::Debt(_debt) => {
+                return Err(anyhow!("Unbalanced ada"));
+            }
+            Balance::Balanced => Value::zero(),
+            Balance::Excess(excess) => excess.clone(),
+        };
+
         Ok(InputSelectionResult {
             input_balance,
             input_asset_balance,
@@ -650,7 +673,7 @@ impl InputSelectionAlgorithm for Thermostat {
                 .chain(self.extra_changes.iter())
                 .cloned()
                 .collect(),
-            fee: estimator.min_required_fee()?,
+            fee,
         })
     }
 
@@ -685,6 +708,7 @@ mod tests {
     use dcspark_core::{cardano, AssetName, OutputIndex, PolicyId};
     use deps::serde_json;
     use std::sync::Arc;
+    use cardano_multiplatform_lib::ledger::common::value::BigNum;
 
     fn verify_balanced_result(result: &InputSelectionResult<UTxODetails, UTxOBuilder>) {
         assert_eq!(
@@ -744,7 +768,7 @@ mod tests {
         .unwrap();
 
         let thermostat = Thermostat::new(thermostat_config());
-        let estimator = ThermostatFeeEstimator::new(NetworkInfo::Testnet, &plan);
+        let estimator = ThermostatFeeEstimator::new(NetworkInfo::Testnet, &plan, BigNum::from(4310));
         (thermostat, estimator)
     }
 

@@ -201,6 +201,21 @@ where
     Ok(selected.map(|entry_ref| entry_ref.inner().clone()))
 }
 
+#[async_trait::async_trait]
+impl dcspark_core::StoppableService
+    for MultiverseSource<
+        dcspark_core::BlockId,
+        crate::cardano::CardanoNetworkEvent<crate::cardano::BlockEvent, cardano_sdk::protocol::Tip>,
+        crate::cardano::CardanoSource,
+    >
+{
+    async fn stop(self) -> anyhow::Result<()> {
+        self.into_inner().stop().await;
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

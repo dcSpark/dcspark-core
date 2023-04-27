@@ -15,6 +15,7 @@ cryptoxide = {version = "0.4.2" }
 hex = { version = "0.4" }
 serde = { version = "1.0.144", features = ["derive", "rc" ] }
 thiserror = { version = "1.0" }
+async-trait = { version = "0.1.57" }
 
 [dev-dependencies]
 smoke = { version = "0.3" }

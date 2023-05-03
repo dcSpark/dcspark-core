@@ -314,17 +314,11 @@ mod tests {
         for iteration in 0..iterations {
             appending_threads.extend(
                 (threads_count * iteration..threads_count * (iteration + 1))
-                    .into_iter()
                     .map(appending_fn)
                     .collect::<Vec<_>>(),
             );
             thread::sleep(Duration::new(1, 0));
-            reading_threads.extend(
-                (0..2 * threads_count)
-                    .into_iter()
-                    .map(reading_fn)
-                    .collect::<Vec<_>>(),
-            );
+            reading_threads.extend((0..2 * threads_count).map(reading_fn).collect::<Vec<_>>());
         }
 
         for thread in appending_threads {

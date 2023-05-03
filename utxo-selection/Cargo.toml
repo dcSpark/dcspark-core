@@ -10,7 +10,7 @@ deps = { version = "0.1.0", path = "../deps" }
 dcspark-core = { version = "0.1.0", path = "../core" }
 
 anyhow = {version = "1.0"}
-cardano-multiplatform-lib = {version = "3.1.3"}
+cardano-multiplatform-lib = { git = "https://github.com/dcSpark/cardano-multiplatform-lib.git", rev = "7e930347d665b05875b7e2974be2f49e8cbe2a12" }
 hex = { version = "0.4" }
 rand = "0.8.5"
 serde = { version = "1.0.144", features = ["derive", "rc" ] }

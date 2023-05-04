@@ -2,8 +2,9 @@ use crate::TransactionFeeEstimator;
 use anyhow::anyhow;
 use cardano_multiplatform_lib::ledger::common::value::BigNum;
 use cardano_multiplatform_lib::TransactionOutput;
-use dcspark_core::multisig_plan::MultisigPlan;
-use dcspark_core::network_id::NetworkInfo;
+use cardano_utils::multisig_plan::MultisigPlan;
+use cardano_utils::network_id::NetworkInfo;
+use cardano_utils::utxo::utxo_builder_to_cml_output;
 use dcspark_core::tx::{UTxOBuilder, UTxODetails};
 use dcspark_core::{Balance, Regulated, TokenId, Value};
 use std::collections::HashMap;
@@ -154,7 +155,7 @@ impl TransactionFeeEstimator for ThermostatFeeEstimator {
         &mut self,
         output: Self::OutputUtxo,
     ) -> anyhow::Result<Value<Regulated>> {
-        let output: TransactionOutput = output.to_cml_output()?;
+        let output: TransactionOutput = utxo_builder_to_cml_output(&output)?;
 
         let lovelace = cardano_multiplatform_lib::ledger::babbage::min_ada::min_pure_ada(
             &self.coins_per_utxo_byte,

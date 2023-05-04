@@ -711,9 +711,9 @@ mod tests {
     use super::*;
     use crate::estimators::ThermostatFeeEstimator;
     use cardano_multiplatform_lib::ledger::common::value::BigNum;
+    use cardano_utils::multisig_plan::MultisigPlan;
+    use cardano_utils::network_id::NetworkInfo;
     use dcspark_core::cardano::Ada;
-    use dcspark_core::multisig_plan::MultisigPlan;
-    use dcspark_core::network_id::NetworkInfo;
     use dcspark_core::tx::{TransactionId, UtxoPointer};
     use dcspark_core::{cardano, AssetName, OutputIndex, PolicyId};
     use deps::serde_json;

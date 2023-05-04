@@ -1,4 +1,4 @@
-use crate::cardano_utils::multisig_plan::MultisigPlan;
+use crate::multisig_plan::MultisigPlan;
 use cardano_multiplatform_lib::builders::tx_builder::{
     TransactionBuilderConfig, TransactionBuilderConfigBuilder,
 };

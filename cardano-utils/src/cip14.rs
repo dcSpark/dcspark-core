@@ -1,7 +1,7 @@
-use crate::{AssetName, PolicyId, TokenId};
 use anyhow::{anyhow, Context as _, Result};
 
 use cryptoxide::hashing::blake2b::Blake2b;
+use dcspark_core::{AssetName, PolicyId, TokenId};
 
 fn fingerprint_hash(policy: &PolicyId, name: &AssetName) -> anyhow::Result<[u8; 20]> {
     let mut buf = vec![0u8; 28 + name.as_ref().len() / 2];

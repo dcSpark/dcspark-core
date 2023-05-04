@@ -1,5 +1,5 @@
 [package]
-name = "dcspark-core"
+name = "cardano-utils"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
@@ -8,20 +8,22 @@ license = "MIT"
 
 [dependencies]
 deps = { version = "0.1.0", path = "../deps" }
+dcspark-core = { version = "0.1.0", path = "../core" }
 
 anyhow = { version = "1.0" }
 bech32 = { version = "0.9" }
+cardano-multiplatform-lib = { git = "https://github.com/dcSpark/cardano-multiplatform-lib.git", rev = "7e930347d665b05875b7e2974be2f49e8cbe2a12" }
 cryptoxide = {version = "0.4.2" }
 hex = { version = "0.4" }
 imbl = { version = "2.0" }
 rand = { version = "0.8.5" }
 serde = { version = "1.0.144", features = ["derive", "rc" ] }
+serde_json = { version = "1.0" }
 thiserror = { version = "1.0" }
 async-trait = { version = "0.1.57" }
 
 [dev-dependencies]
 clap = { version = "3.2", features = [ "derive", "env" ] }
 quickcheck = { version = "1" }
-serde_json = { version = "1.0" }
 smoke = { version = "0.3" }
 smoke-macros = { version = '0.1' }

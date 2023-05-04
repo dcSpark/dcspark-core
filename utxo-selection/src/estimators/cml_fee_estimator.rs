@@ -4,7 +4,9 @@ use cardano_multiplatform_lib::builders::output_builder::SingleOutputBuilderResu
 use cardano_multiplatform_lib::builders::tx_builder::TransactionBuilder;
 use cardano_multiplatform_lib::ledger::common::value::BigNum;
 use cardano_multiplatform_lib::TransactionOutput;
-use dcspark_core::tx::{CardanoPaymentCredentials, UTxOBuilder, UTxODetails};
+use cardano_utils::payment_credentials::CardanoPaymentCredentials;
+use cardano_utils::utxo::{utxo_builder_to_cml_output, utxo_details_to_cml_input};
+use dcspark_core::tx::{UTxOBuilder, UTxODetails};
 use dcspark_core::{Regulated, Value};
 
 use crate::TransactionFeeEstimator;
@@ -52,7 +54,8 @@ impl TransactionFeeEstimator for CmlFeeEstimator {
     }
 
     fn fee_for_input(&self, input: &Self::InputUtxo) -> anyhow::Result<Value<Regulated>> {
-        let converted_input: InputBuilderResult = input.clone().to_cml_input(&self.creds)?;
+        let converted_input: InputBuilderResult = utxo_details_to_cml_input(input, &self.creds)?;
+
         let fee = self
             .builder
             .fee_for_input(&converted_input)
@@ -62,7 +65,7 @@ impl TransactionFeeEstimator for CmlFeeEstimator {
     }
 
     fn add_input(&mut self, input: Self::InputUtxo) -> anyhow::Result<()> {
-        let converted_input: InputBuilderResult = input.to_cml_input(&self.creds)?;
+        let converted_input: InputBuilderResult = utxo_details_to_cml_input(&input, &self.creds)?;
 
         self.builder
             .add_input(&converted_input)
@@ -70,7 +73,7 @@ impl TransactionFeeEstimator for CmlFeeEstimator {
     }
 
     fn fee_for_output(&self, output: &Self::OutputUtxo) -> anyhow::Result<Value<Regulated>> {
-        let output: TransactionOutput = output.clone().to_cml_output()?;
+        let output: TransactionOutput = utxo_builder_to_cml_output(output)?;
         let output = output_to_builder_result(&output);
         let fee = self
             .builder
@@ -81,7 +84,7 @@ impl TransactionFeeEstimator for CmlFeeEstimator {
     }
 
     fn add_output(&mut self, output: Self::OutputUtxo) -> anyhow::Result<()> {
-        let output: TransactionOutput = output.to_cml_output()?;
+        let output: TransactionOutput = utxo_builder_to_cml_output(&output)?;
         let output = output_to_builder_result(&output);
         self.builder
             .add_output(&output)
@@ -92,7 +95,7 @@ impl TransactionFeeEstimator for CmlFeeEstimator {
         &mut self,
         output: Self::OutputUtxo,
     ) -> anyhow::Result<Value<Regulated>> {
-        let output: TransactionOutput = output.to_cml_output()?;
+        let output: TransactionOutput = utxo_builder_to_cml_output(&output)?;
 
         let lovelace = cardano_multiplatform_lib::ledger::babbage::min_ada::min_pure_ada(
             &self.coins_per_utxo_byte,
@@ -129,14 +132,13 @@ mod tests {
     use cardano_multiplatform_lib::ledger::common::value::BigNum;
     use cardano_multiplatform_lib::plutus::ExUnitPrices;
     use cardano_multiplatform_lib::UnitInterval;
+    use cardano_utils::payment_credentials::CardanoPaymentCredentials;
     use std::sync::Arc;
 
     use crate::algorithms::{Thermostat, ThermostatAlgoConfig};
     use crate::estimators::CmlFeeEstimator;
     use crate::{InputOutputSetup, InputSelectionAlgorithm};
-    use dcspark_core::tx::{
-        CardanoPaymentCredentials, TransactionId, UTxOBuilder, UTxODetails, UtxoPointer,
-    };
+    use dcspark_core::tx::{TransactionId, UTxOBuilder, UTxODetails, UtxoPointer};
     use dcspark_core::{Address, Value};
 
     fn builder_config() -> TransactionBuilderConfig {

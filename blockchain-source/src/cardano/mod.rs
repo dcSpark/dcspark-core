@@ -14,8 +14,8 @@ use cardano_net::{NetworkDescription, NetworkHandle};
 pub use cardano_sdk::protocol::Tip;
 use cardano_sdk::protocol::Version;
 pub use configuration::{ChainInfo, NetworkConfiguration};
+use dcspark_core::critical_error;
 use dcspark_core::error::CriticalError;
-use dcspark_core::{critical_error, BlockId};
 pub use point::*;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Duration;
@@ -122,8 +122,7 @@ impl CardanoSource {
                 rx,
                 exit_tx,
                 tip_update_pace,
-                network_config.genesis_parent.clone(),
-                network_config.genesis.clone(),
+                network_config.clone(),
                 config,
             )
             .instrument(tracing::info_span!("request handler")),
@@ -160,8 +159,7 @@ async fn request_handler(
     mut requests: mpsc::Receiver<(Vec<Point>, mpsc::Sender<Result<Event>>)>,
     exit_signal: oneshot::Sender<()>,
     tip_update_pace: Duration,
-    genesis_parent: BlockId,
-    genesis: BlockId,
+    network_config: NetworkConfiguration,
     config: NetworkDescription,
 ) {
     // initially set this to a time in the past, which guarantees an event in the tip fetch.
@@ -196,10 +194,10 @@ async fn request_handler(
         let from = if from
             == vec![Point::BlockHeader {
                 slot_nb: 0.into(),
-                hash: genesis_parent.clone(),
+                hash: network_config.genesis_parent.clone(),
             }] {
             vec![Point::BlockHeader {
-                hash: genesis.clone(),
+                hash: network_config.genesis.clone(),
                 slot_nb: 0.into(),
             }]
         } else {
@@ -212,6 +210,7 @@ async fn request_handler(
             &channel,
             &mut last_tip_event,
             tip_update_pace,
+            &network_config,
         )
         .await
         {
@@ -232,6 +231,7 @@ async fn block_fetch(
     channel: &mpsc::Sender<Result<Event, anyhow::Error>>,
     last_tip_event: &mut Instant,
     tip_update_pace: Duration,
+    network_config: &NetworkConfiguration,
 ) -> Result<()> {
     let points: Result<Vec<_>> = from
         .into_iter()
@@ -293,8 +293,11 @@ async fn block_fetch(
     let _ = block_fetcher.next().await?;
 
     while let Some(raw_block) = block_fetcher.next().await? {
-        let event =
-            BlockEvent::from_serialized_block(raw_block.as_ref()).context(critical_error!());
+        let event = BlockEvent::from_serialized_block(
+            raw_block.as_ref(),
+            &network_config.shelley_era_config,
+        )
+        .context(critical_error!());
 
         if channel
             .send(event.map(CardanoNetworkEvent::Block))

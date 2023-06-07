@@ -9,6 +9,7 @@ members = [
     "multiverse",
     "utxo-selection",
     "cardano-cli-tools/cip1852-first-address",
+    "cardano-cli-tools/oura-block-fetcher",
 ]
 
 [workspace.metadata.release]

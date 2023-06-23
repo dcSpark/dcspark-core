@@ -33,8 +33,8 @@ mod seqno;
 mod seqno_iter;
 mod shared_mmap;
 
-use appender::Appender;
 pub use database::Database;
-pub use error::Error;
+pub use error::{FileError, FraosError, MmapError};
+pub use index_on_mmaps::MmapIndexError;
 pub use seqno_iter::SeqNoIter;
 pub use shared_mmap::SharedMmap;

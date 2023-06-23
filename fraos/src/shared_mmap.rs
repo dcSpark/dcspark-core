@@ -92,3 +92,65 @@ impl AsRef<[u8]> for SharedMmap {
         self.get_ref()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::error::MmapError;
+    use crate::shared_mmap::SharedMmap;
+    use memmap2::MmapOptions;
+
+    #[test]
+    fn simple() {
+        let mmapped_area = MmapOptions::new()
+            .len(u8::MAX as usize + 1)
+            .map_anon()
+            .map_err(MmapError::Mmap);
+        assert!(mmapped_area.is_ok());
+        let mut mmapped_area = mmapped_area.unwrap();
+
+        // set numbers from 0 to u8::MAX
+        for (index, byte) in mmapped_area.iter_mut().enumerate() {
+            *byte = index as u8;
+        }
+
+        // verify numbers are correct
+        for i in u8::MIN as usize..u8::MAX as usize + 1 {
+            assert_eq!(Some(i as u8), mmapped_area.get(i).cloned());
+        }
+
+        // create a shared mmap
+        let read_only = mmapped_area.make_read_only().map_err(MmapError::Protect);
+        assert!(read_only.is_ok());
+        let read_only = read_only.unwrap();
+        let shared_mmap = SharedMmap::new(read_only);
+
+        let slice = shared_mmap
+            .slice(0..u8::MAX as usize + 1)
+            .get_ref()
+            .to_vec();
+        assert_eq!(slice[0], 0);
+        assert_eq!(slice.last().cloned(), Some(u8::MAX));
+        assert_eq!(slice.len(), u8::MAX as usize + 1);
+
+        let slice = shared_mmap
+            .slice(0..u8::MAX as usize + 100)
+            .get_ref()
+            .to_vec();
+        assert_eq!(slice[0], 0);
+        assert_eq!(slice.last().cloned(), Some(u8::MAX));
+        assert_eq!(slice.len(), u8::MAX as usize + 1);
+
+        let slice = shared_mmap
+            .slice(1..u8::MAX as usize + 100)
+            .get_ref()
+            .to_vec();
+        assert_eq!(slice[0], 1);
+        assert_eq!(slice.last().cloned(), Some(u8::MAX));
+        assert_eq!(slice.len(), u8::MAX as usize);
+
+        let slice = shared_mmap.slice(1..u8::MAX as usize).get_ref().to_vec();
+        assert_eq!(slice[0], 1);
+        assert_eq!(slice.last().cloned(), Some(u8::MAX - 1));
+        assert_eq!(slice.len(), u8::MAX as usize - 1);
+    }
+}

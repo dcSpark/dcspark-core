@@ -1,3 +1,4 @@
+use crate::error::FraosError;
 use crate::{flatfile::FlatFile, seqno::SeqNoIndex};
 use std::sync::Arc;
 
@@ -14,17 +15,15 @@ impl SeqNoIter {
         Self { data, index, seqno }
     }
 
-    fn next_impl(&mut self) -> Option<Vec<u8>> {
-        let offset = self.index.get_pointer_to_value(self.seqno)? as usize;
-        let next_offset = self
-            .index
-            .get_pointer_to_value(self.seqno + 1)
-            .map(|value| value as usize)
-            .unwrap_or_else(|| self.data.memory_size());
-        let length = next_offset - offset;
+    pub fn next_impl(&mut self) -> Result<Option<Vec<u8>>, FraosError> {
+        let (offset, length) = match self.index.get_offset_and_length(self.seqno)? {
+            None => return Ok(None),
+            Some((offset, length)) => (offset, length),
+        };
+
         let item = self.data.get_record_at_offset(offset, length)?;
         self.seqno += 1;
-        Some(item)
+        Ok(item)
     }
 }
 
@@ -32,6 +31,6 @@ impl Iterator for SeqNoIter {
     type Item = Vec<u8>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next_impl()
+        self.next_impl().unwrap()
     }
 }

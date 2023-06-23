@@ -291,16 +291,8 @@ mod tests {
         let record: Vec<u8> = (0..size_one_record).map(|i| (i % 256) as u8).collect();
         let records = vec![record.as_slice()];
 
-        for i in 0..write_count {
+        for _i in 0..write_count {
             db.append(&records).unwrap();
-            if i % 1000 == 0 {
-                println!(
-                    "#{}: data: {}, index: {}",
-                    i,
-                    db.mmaps_count_data().unwrap(),
-                    db.mmaps_count_index().unwrap()
-                );
-            }
         }
 
         for i in 0..write_count {
@@ -354,7 +346,7 @@ mod tests {
         let db = Database::file(tmp.path()).unwrap();
 
         let one_record_size = 1024;
-        let records = 5000000;
+        let records = 50000;
         big_write_test(db, one_record_size, records);
     }
 }

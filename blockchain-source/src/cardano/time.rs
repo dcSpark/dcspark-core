@@ -26,7 +26,7 @@ impl Era {
 
     pub const SHELLEY_PREPROD: Self = Self {
         first_slot: 86400,
-        start_epoch: 0,
+        start_epoch: 4,
         known_time: 1655769600,
         slot_length: 1,
     };
@@ -60,7 +60,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn absolute_slot_to_epoch() {
+    fn absolute_slot_to_epoch_mainnet() {
         let era = Era::SHELLEY_MAINNET;
 
         assert_eq!(None, era.absolute_slot_to_epoch(4492800 - 1));
@@ -78,5 +78,25 @@ mod tests {
         let correct = 92595;
         let slot = epoch_slot_to_absolute(4, 6195);
         assert_eq!(slot, correct);
+
+        let epoch = era.absolute_slot_to_epoch(97507251).unwrap();
+        assert_eq!(epoch, 423);
+    }
+
+    #[test]
+    fn absolute_slot_to_epoch_preprod() {
+        let era = Era::SHELLEY_PREPROD;
+        let epoch = era.absolute_slot_to_epoch(33389374).unwrap();
+        assert_eq!(epoch, 81);
+        let epoch = era.absolute_slot_to_epoch(33350429).unwrap();
+        assert_eq!(epoch, 81);
+        let timestamp = era.compute_timestamp(33350429);
+        assert_eq!(timestamp, 1689033629);
+        let epoch = era.absolute_slot_to_epoch(33346852).unwrap();
+        assert_eq!(epoch, 80);
+        let epoch = era.absolute_slot_to_epoch(33350398).unwrap();
+        assert_eq!(epoch, 80);
+        let epoch = era.absolute_slot_to_epoch(518340).unwrap();
+        assert_eq!(epoch, 4);
     }
 }

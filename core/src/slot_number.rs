@@ -205,12 +205,12 @@ mod tests {
             v: SlotNumber(1234),
         };
 
-        let input = r###"
+        let input = r#"
         {
             "n": 35,
             "v": 1234
         }
-        "###;
+        "#;
 
         let output: Sample = serde_json::from_str(input).unwrap();
         assert_eq!(expected, output);
@@ -223,12 +223,12 @@ mod tests {
             v: SlotNumber(4567),
         };
 
-        let input = r###"
+        let input = r#"
         {
             "n": 70,
             "v": "4567"
         }
-        "###;
+        "#;
 
         let output: Sample = serde_json::from_str(input).unwrap();
         assert_eq!(expected, output);

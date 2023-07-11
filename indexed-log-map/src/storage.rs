@@ -222,7 +222,7 @@ mod tests {
             storage.append(i, i).unwrap();
         }
 
-        let iter_from_vec = vec![
+        let iter_from_vec = [
             0usize,
             n_items / 4,
             n_items / 2,

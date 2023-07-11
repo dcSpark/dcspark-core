@@ -221,12 +221,12 @@ mod tests {
             v: BlockNumber(1234),
         };
 
-        let input = r###"
+        let input = r#"
         {
             "n": 35,
             "v": 1234
         }
-        "###;
+        "#;
 
         let output: Sample = deps::serde_json::from_str(input).unwrap();
         assert_eq!(expected, output);
@@ -239,12 +239,12 @@ mod tests {
             v: BlockNumber(4567),
         };
 
-        let input = r###"
+        let input = r#"
         {
             "n": 70,
             "v": "4567"
         }
-        "###;
+        "#;
 
         let output: Sample = deps::serde_json::from_str(input).unwrap();
         assert_eq!(expected, output);

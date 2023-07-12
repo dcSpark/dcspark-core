@@ -15,7 +15,6 @@ pub use cardano_sdk::protocol::Tip;
 use cardano_sdk::protocol::Version;
 pub use configuration::{ChainInfo, NetworkConfiguration};
 use dcspark_core::critical_error;
-use dcspark_core::error::CriticalError;
 pub use point::*;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Duration;

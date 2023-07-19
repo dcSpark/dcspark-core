@@ -13,7 +13,7 @@ impl std::fmt::Display for CriticalError {
 #[macro_export]
 macro_rules! critical_error {
     () => {
-        CriticalError {
+        $crate::error::CriticalError {
             line: line!(),
             file: file!(),
         }

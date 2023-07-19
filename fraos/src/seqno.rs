@@ -1,5 +1,6 @@
 use crate::appender::Appender;
 use crate::error::{FraosError, MmapError};
+use crate::FraosError::EmptyRecordAppended;
 use std::{mem::size_of, path::PathBuf};
 
 /// Index from the sequential number of a record to its location in a flatfile.
@@ -25,6 +26,10 @@ impl SeqNoIndex {
     pub fn append(&self, records: &[(usize, usize)]) -> Result<Option<usize>, FraosError> {
         if records.is_empty() {
             return Ok(None);
+        }
+
+        if records.iter().any(|(_offset, len)| *len == 0) {
+            return Err(EmptyRecordAppended);
         }
 
         let size_inc: usize = Self::SIZE_OF_USIZE * 2 * records.len();
@@ -114,6 +119,7 @@ impl SeqNoIndex {
 #[cfg(test)]
 mod tests {
     use super::SeqNoIndex;
+    use crate::FraosError;
 
     #[quickcheck]
     fn test_read_write(records: Vec<(usize, usize)>) {
@@ -140,6 +146,10 @@ mod tests {
 
     #[quickcheck]
     fn test_seq_number(records: Vec<(usize, usize)>) {
+        if records.iter().any(|(_, r)| *r == 0) {
+            return;
+        }
+
         let tmp = tempfile::NamedTempFile::new().unwrap();
 
         let index = SeqNoIndex::new(Some(tmp.path().to_path_buf()), true).unwrap();
@@ -160,5 +170,20 @@ mod tests {
                 assert!(record.unwrap().is_some());
             }
         }
+    }
+
+    #[test]
+    fn check_empty_cases() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+
+        let index = SeqNoIndex::new(Some(tmp.path().to_path_buf()), true).unwrap();
+
+        let records = vec![(0, 5), (5, 0), (5, 10)];
+        let result = index.append(&records);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.err().unwrap(),
+            FraosError::EmptyRecordAppended
+        ));
     }
 }

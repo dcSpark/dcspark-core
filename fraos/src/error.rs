@@ -12,7 +12,7 @@ pub enum FileError {
     PathNotDir,
     /// Failed to extend a file
     Extend(io::Error),
-    /// Failed to extend a file
+    /// Failed to shrink a file
     Shrink(io::Error),
     /// Failed to get file metadata
     Metadata(io::Error),
@@ -114,7 +114,7 @@ pub enum FraosError {
     StorageLock { description: String },
 
     /// Failed to extend
-    StorageZeroExtension,
+    EmptyRecordAppended,
 }
 
 impl error::Error for FraosError {
@@ -137,7 +137,7 @@ impl fmt::Display for FraosError {
             FraosError::DataFileDamaged => write!(f, "data file damaged"),
             FraosError::IndexFileDamaged => write!(f, "index file damaged"),
             FraosError::StorageLock { description } => write!(f, "poisoned lock: {}", description),
-            FraosError::StorageZeroExtension => {
+            FraosError::EmptyRecordAppended => {
                 write!(f, "tried to extend storage file with empty data")
             }
         }

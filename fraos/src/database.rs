@@ -163,8 +163,8 @@ impl Database {
 
 impl Drop for Database {
     fn drop(&mut self) {
-        self.seqno_index.shrink_to_size().unwrap();
-        self.flatfile.shrink_to_size().unwrap();
+        let _ = self.seqno_index.shrink_to_size();
+        let _ = self.flatfile.shrink_to_size();
     }
 }
 

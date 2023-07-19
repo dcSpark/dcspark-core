@@ -36,10 +36,10 @@ impl FlatFile {
         }
 
         if records.iter().any(|record| record.is_empty()) {
-            return Err(FraosError::StorageZeroExtension);
+            return Err(FraosError::EmptyRecordAppended);
         }
 
-        let size_inc: usize = records.iter().fold(0, |sum, record| sum + record.len());
+        let size_inc: usize = records.iter().map(|record| record.len()).sum();
 
         self.inner.append(size_inc, move |mut mmap| {
             for record in records {

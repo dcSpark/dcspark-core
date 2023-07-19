@@ -103,7 +103,7 @@ impl GrowableMmap {
         F: Fn(&mut [u8]) -> Result<(), FraosError>,
     {
         if extension == 0 {
-            return Err(FraosError::StorageZeroExtension);
+            return Err(FraosError::EmptyRecordAppended);
         }
 
         let mut storage_guard = self.storage.write().map_err(|err| -> FraosError {

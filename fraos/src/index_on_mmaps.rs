@@ -1,7 +1,7 @@
 use std::error;
 use std::fmt::{Display, Formatter};
 
-/// Represents raw data bounds: number of mmap, offset in particular it, data length
+/// Represents raw data bounds: number of mmap, offset in particular mmap, data length
 #[derive(Debug, Eq, PartialEq)]
 pub struct IndexDescriptor {
     pub mmap_number: usize,

@@ -10,7 +10,7 @@
 //!
 //! This doesn't implement full support for the first point, we only parse what's needed to compute
 //! the hash, parent, height, and epoch-slot of epoch boundary blocks.
-use super::time::epoch_slot_to_absolute;
+use super::time::epoch_slot_to_absolute_byron;
 use anyhow::Context;
 use cardano_sdk::chain::{
     byron::{self, ChainDifficulty},
@@ -115,12 +115,14 @@ impl ByronHeader {
 
     pub(super) fn slot_number(&self) -> SlotNumber {
         SlotNumber::new(match self {
-            ByronHeader::ByronBoundary(header) => epoch_slot_to_absolute(header.consensus.epoch, 0),
+            ByronHeader::ByronBoundary(header) => {
+                epoch_slot_to_absolute_byron(header.consensus.epoch, 0)
+            }
             ByronHeader::Byron(header) => {
                 let slot = header.consensus.slot_id.slot_id.into();
                 let epoch = header.consensus.slot_id.epoch;
 
-                epoch_slot_to_absolute(epoch, slot)
+                epoch_slot_to_absolute_byron(epoch, slot)
             }
         })
     }

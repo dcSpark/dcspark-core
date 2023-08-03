@@ -1,4 +1,5 @@
-use crate::{flatfile::FlatFile, seqno::SeqNoIndex, Error, SeqNoIter};
+use crate::error::{FileError, FraosError};
+use crate::{flatfile::FlatFile, seqno::SeqNoIndex, SeqNoIter};
 use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -14,43 +15,35 @@ pub struct Database {
 
 impl Database {
     /// Open the database. Will create one if not exists.
-    pub fn file<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
-        let path = path.as_ref();
-
-        if !path.exists() {
-            std::fs::create_dir(path).map_err(|err| Error::FileOpen(path.to_path_buf(), err))?;
-        }
-
-        if !path.is_dir() {
-            return Err(Error::PathNotDir);
-        }
-
-        let flatfile_path = path.join("data");
-        let seqno_index_path = path.join("seqno");
-
-        Self::new(Some(flatfile_path), Some(seqno_index_path), true)
+    pub fn file<P: AsRef<Path>>(path: P) -> Result<Self, FraosError> {
+        Self::file_inner(path, true)
     }
 
-    /// Open the database. Will create one if not exists.
-    pub fn file_readonly<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+    pub fn file_readonly<P: AsRef<Path>>(path: P) -> Result<Self, FraosError> {
+        Self::file_inner(path, false)
+    }
+
+    fn file_inner<P: AsRef<Path>>(path: P, writable: bool) -> Result<Self, FraosError> {
         let path = path.as_ref();
 
         if !path.exists() {
-            return Err(Error::PathNotFound);
+            std::fs::create_dir(path).map_err(|err| {
+                FraosError::FileError(FileError::FileOpen(path.to_path_buf(), err))
+            })?;
         }
 
         if !path.is_dir() {
-            return Err(Error::PathNotDir);
+            return Err(FraosError::FileError(FileError::PathNotDir));
         }
 
         let flatfile_path = path.join("data");
         let seqno_index_path = path.join("seqno");
 
-        Self::new(Some(flatfile_path), Some(seqno_index_path), false)
+        Self::new(Some(flatfile_path), Some(seqno_index_path), writable)
     }
 
     /// Open an in-memory database.
-    pub fn memory() -> Result<Self, Error> {
+    pub fn memory() -> Result<Self, FraosError> {
         Self::new(None, None, true)
     }
 
@@ -58,19 +51,15 @@ impl Database {
         flatfile_path: Option<PathBuf>,
         seqno_index_path: Option<PathBuf>,
         writable: bool,
-    ) -> Result<Self, Error> {
-        let flatfile = Arc::new(FlatFile::new(flatfile_path, writable)?);
+    ) -> Result<Self, FraosError> {
         let seqno_index = Arc::new(SeqNoIndex::new(seqno_index_path, writable)?);
 
-        let seqno_size = seqno_index.size();
-        if seqno_size > 0
-            && seqno_index
-                .get_pointer_to_value(seqno_size - 1)
-                .map(|pos| pos >= flatfile.memory_size() as u64)
-                .unwrap_or(true)
-        {
-            return Err(Error::SeqNoIndexDamaged);
-        }
+        seqno_index.is_correct()?;
+        let existing_length: usize = match seqno_index.last()? {
+            None => 0,
+            Some((last_offset, last_len)) => last_offset + last_len,
+        };
+        let flatfile = Arc::new(FlatFile::new(flatfile_path, existing_length, writable)?);
 
         let write_lock = Arc::new(Mutex::new(()));
 
@@ -83,13 +72,13 @@ impl Database {
 
     /// Write an array of records to the database. This function will block if
     /// another write is still in progress.
-    pub fn append(&self, records: &[&[u8]]) -> Result<(), Error> {
+    pub fn append(&self, records: &[&[u8]]) -> Result<(), FraosError> {
         self.append_get_seqno(records).map(|_| ())
     }
 
     /// Write an array of records to the database. This function will block if
     /// another write is still in progress.
-    pub fn append_get_seqno(&self, records: &[&[u8]]) -> Result<Option<usize>, Error> {
+    pub fn append_get_seqno(&self, records: &[&[u8]]) -> Result<Option<usize>, FraosError> {
         if records.is_empty() {
             return Ok(None);
         }
@@ -102,7 +91,7 @@ impl Database {
         let mut offset = initial_size;
 
         for record in records.iter() {
-            seqno_index_update.push(offset as u64);
+            seqno_index_update.push((offset, record.len()));
             offset += record.len();
         }
 
@@ -113,19 +102,25 @@ impl Database {
     }
 
     /// Put a single record (not recommended).
-    pub fn put(&self, record: &[u8]) -> Result<(), Error> {
+    pub fn put(&self, record: &[u8]) -> Result<(), FraosError> {
         self.append(&[record])
     }
 
+    /// Put a single record (not recommended).
+    pub fn put_seqno(&self, record: &[u8]) -> Result<usize, FraosError> {
+        match self.append_get_seqno(&[record])? {
+            None => Err(FraosError::IndexFileDamaged),
+            Some(seqno) => Ok(seqno),
+        }
+    }
+
     /// Get a record by its sequential number.
-    pub fn get_by_seqno(&self, seqno: usize) -> Option<Vec<u8>> {
-        let offset = self.seqno_index.get_pointer_to_value(seqno)? as usize;
-        let next_offset = self
-            .seqno_index
-            .get_pointer_to_value(seqno + 1)
-            .map(|value| value as usize)
-            .unwrap_or_else(|| self.flatfile.memory_size());
-        let length = next_offset - offset;
+    pub fn get_by_seqno(&self, seqno: usize) -> Result<Option<Vec<u8>>, FraosError> {
+        let (offset, length) = match self.seqno_index.get_offset_and_length(seqno)? {
+            None => return Ok(None),
+            Some(data) => data,
+        };
+
         self.flatfile.get_record_at_offset(offset, length)
     }
 
@@ -139,16 +134,37 @@ impl Database {
         ))
     }
 
-    pub fn last(&self) -> Option<Vec<u8>> {
+    pub fn last(&self) -> Result<Option<Vec<u8>>, FraosError> {
+        if self.is_empty() {
+            return Ok(None);
+        }
+
         self.get_by_seqno(self.len().saturating_sub(1))
     }
 
     pub fn len(&self) -> usize {
-        self.seqno_index.size()
+        self.seqno_index.len()
     }
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    #[allow(unused)]
+    pub(crate) fn mmaps_count_index(&self) -> Result<usize, FraosError> {
+        self.seqno_index.mmaps_count()
+    }
+
+    #[allow(unused)]
+    pub(crate) fn mmaps_count_data(&self) -> Result<usize, FraosError> {
+        self.flatfile.mmaps_count()
+    }
+}
+
+impl Drop for Database {
+    fn drop(&mut self) {
+        let _ = self.seqno_index.shrink_to_size();
+        let _ = self.flatfile.shrink_to_size();
     }
 }
 
@@ -175,18 +191,21 @@ mod tests {
         db.append(&records1).unwrap();
 
         for (i, original_record) in records1.iter().enumerate() {
-            let record = db.get_by_seqno(i).unwrap();
+            let record = db.get_by_seqno(i).unwrap().unwrap();
             assert_eq!(*original_record, record.as_slice());
         }
 
-        assert_eq!(*records1.last().unwrap(), db.last().unwrap().as_slice());
+        assert_eq!(
+            *records1.last().unwrap(),
+            db.last().unwrap().unwrap().as_slice()
+        );
         assert_eq!(records1.len(), db.len());
 
         let iter = db.iter_from_seqno(0).unwrap();
         let mut count = 0;
 
         for record in iter {
-            assert_eq!(records1[count], record.as_slice());
+            assert_eq!(records1[count], record.unwrap().as_slice());
             count += 1;
         }
         assert_eq!(count, records1.len());
@@ -197,11 +216,14 @@ mod tests {
         );
 
         for i in records1.len()..(records1.len() + records2.len()) {
-            let record = db.get_by_seqno(i).unwrap();
+            let record = db.get_by_seqno(i).unwrap().unwrap();
             assert_eq!(records2[i - records1.len()], record.as_slice());
         }
 
-        assert_eq!(*records2.last().unwrap(), db.last().unwrap().as_slice());
+        assert_eq!(
+            *records2.last().unwrap(),
+            db.last().unwrap().unwrap().as_slice()
+        );
         assert_eq!(records1.len() + records2.len(), db.len());
     }
 
@@ -239,14 +261,14 @@ mod tests {
         });
 
         for (i, original_record) in records1.iter().enumerate() {
-            let record = db.get_by_seqno(i).unwrap();
+            let record = db.get_by_seqno(i).unwrap().unwrap();
             assert_eq!(*original_record, record.as_slice());
         }
 
         let data2 = write_thread.join().unwrap();
 
         for i in data1.len()..(data1.len() + data2.len()) {
-            let record = db.get_by_seqno(i).unwrap();
+            let record = db.get_by_seqno(i).unwrap().unwrap();
             let i = i - data1.len();
             assert_eq!(data2[i], record.as_slice());
         }
@@ -269,12 +291,12 @@ mod tests {
         let record: Vec<u8> = (0..size_one_record).map(|i| (i % 256) as u8).collect();
         let records = vec![record.as_slice()];
 
-        for _ in 0..write_count {
+        for _i in 0..write_count {
             db.append(&records).unwrap();
         }
 
         for i in 0..write_count {
-            let found = db.get_by_seqno(i as usize).unwrap();
+            let found = db.get_by_seqno(i as usize).unwrap().unwrap();
             assert_eq!(record, found);
         }
     }
@@ -290,7 +312,7 @@ mod tests {
         }
 
         for i in 0..(iteration + 1) * write_count {
-            let found = db.get_by_seqno(i as usize).unwrap();
+            let found = db.get_by_seqno(i as usize).unwrap().unwrap();
             assert_eq!(record, found);
         }
 

@@ -205,7 +205,7 @@ mod tests {
         let mut count = 0;
 
         for record in iter {
-            assert_eq!(records1[count], record.as_slice());
+            assert_eq!(records1[count], record.unwrap().as_slice());
             count += 1;
         }
         assert_eq!(count, records1.len());

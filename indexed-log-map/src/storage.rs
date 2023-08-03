@@ -114,7 +114,7 @@ impl<Key: Serialize + DeserializeOwned, Value: Serialize + DeserializeOwned>
         };
 
         Ok(Some(iter.map(|mmap| -> Result<Value> {
-            ciborium::de::from_reader(mmap.as_slice()).context("can't deserialize cbor rep")
+            ciborium::de::from_reader(mmap?.as_slice()).context("can't deserialize cbor rep")
         })))
     }
 
@@ -154,7 +154,7 @@ impl<Key: Serialize + DeserializeOwned, Value: Serialize + DeserializeOwned>
         };
 
         Some(iter.map(|mmap| -> Result<Value> {
-            ciborium::de::from_reader(mmap.as_slice()).context("can't deserialize cbor rep")
+            ciborium::de::from_reader(mmap?.as_slice()).context("can't deserialize cbor rep")
         }))
     }
 

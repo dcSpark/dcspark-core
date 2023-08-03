@@ -87,7 +87,7 @@ impl SeqNoIndex {
     }
 
     pub fn is_correct(&self) -> Result<(), FraosError> {
-        if self.inner.memory_size() != self.len() * Self::SIZE_OF_USIZE * 2 {
+        if self.inner.memory_size() % (Self::SIZE_OF_USIZE * 2) != 0 {
             return Err(FraosError::IndexFileDamaged);
         }
 

@@ -28,9 +28,9 @@ impl SeqNoIter {
 }
 
 impl Iterator for SeqNoIter {
-    type Item = Vec<u8>;
+    type Item = Result<Vec<u8>, FraosError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next_impl().unwrap()
+        self.next_impl().transpose()
     }
 }

@@ -10,11 +10,12 @@ use std::time::Instant;
 pub use self::event::{BlockEvent, CardanoNetworkEvent};
 use crate::Source;
 use anyhow::{Context as _, Result};
+
 use cardano_net::{NetworkDescription, NetworkHandle};
 pub use cardano_sdk::protocol::Tip;
 use cardano_sdk::protocol::Version;
 pub use configuration::{ChainInfo, NetworkConfiguration};
-use dcspark_core::critical_error;
+use dcspark_core::{critical_error, StoppableService};
 pub use point::*;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Duration;
@@ -22,7 +23,14 @@ use tracing::{debug, error, info, warn, Instrument};
 
 const TX_PROCESSING_CHANNEL_BOUND: usize = 1000;
 
-type Event = CardanoNetworkEvent<BlockEvent, Tip>;
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct TipAndLastFetched {
+    pub tip: Tip,
+    pub last_fethed: Point,
+}
+
+type Event = CardanoNetworkEvent<BlockEvent, TipAndLastFetched>;
 
 pub struct CardanoSource {
     service: mpsc::Sender<(Vec<Point>, mpsc::Sender<Result<Event>>)>,
@@ -153,6 +161,15 @@ impl CardanoSource {
     }
 }
 
+#[async_trait::async_trait]
+impl StoppableService for CardanoSource {
+    async fn stop(self) -> Result<()> {
+        self.stop().await;
+
+        Ok(())
+    }
+}
+
 async fn request_handler(
     handle: NetworkHandle,
     mut requests: mpsc::Receiver<(Vec<Point>, mpsc::Sender<Result<Event>>)>,
@@ -267,7 +284,10 @@ async fn block_fetch(
 
     if last_tip_event.elapsed() >= tip_update_pace {
         if channel
-            .send(Ok(CardanoNetworkEvent::Tip(tip.clone())))
+            .send(Ok(CardanoNetworkEvent::Tip(TipAndLastFetched {
+                tip: tip.clone(),
+                last_fethed: Point::from(from.clone()),
+            })))
             .await
             .is_err()
         {

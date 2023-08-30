@@ -2,6 +2,7 @@ pub mod rollback;
 
 use crate::{EventObject, GetNextFrom, PullFrom, Source};
 use anyhow::{anyhow, Result};
+use dcspark_core::StoppableService;
 use multiverse::{BestBlock, BestBlockSelectionRule, Variant};
 use std::{
     fmt::{Debug, Display},
@@ -202,15 +203,17 @@ where
 }
 
 #[async_trait::async_trait]
-impl dcspark_core::StoppableService
-    for MultiverseSource<
-        dcspark_core::BlockId,
-        crate::cardano::CardanoNetworkEvent<crate::cardano::BlockEvent, cardano_sdk::protocol::Tip>,
-        crate::cardano::CardanoSource,
-    >
+impl<K, V, InnerSource, ScalarInnerFrom> dcspark_core::StoppableService
+    for MultiverseSource<K, V, InnerSource>
+where
+    InnerSource: Source<Event = V, From = Vec<ScalarInnerFrom>> + Send + StoppableService,
+    ScalarInnerFrom: PullFrom + PartialEq + Clone + Sync + std::fmt::Debug,
+    V: GetNextFrom<From = ScalarInnerFrom>,
+    K: AsRef<[u8]> + Eq + Hash + Debug + Clone + Display + PullFrom + Sync,
+    V: Variant<Key = K> + Clone + EventObject,
 {
     async fn stop(self) -> anyhow::Result<()> {
-        self.into_inner().stop().await;
+        self.into_inner().stop().await?;
 
         Ok(())
     }

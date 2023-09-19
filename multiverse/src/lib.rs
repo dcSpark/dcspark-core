@@ -315,10 +315,7 @@ where
     where
         P: AsRef<Path>,
     {
-        let db = sled::Config::new()
-            .path(&path)
-            .print_profile_on_drop(false)
-            .open()?;
+        let db = sled::Config::new().path(&path).open()?;
 
         Self::load_from(db, domain, store_from)
     }

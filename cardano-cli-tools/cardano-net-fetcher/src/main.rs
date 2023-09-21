@@ -1,12 +1,9 @@
 use clap::Parser;
-
-use dcspark_blockchain_source::cardano::Point::{BlockHeader, Origin};
+use dcspark_blockchain_source::cardano::Point::BlockHeader;
 use dcspark_blockchain_source::cardano::{CardanoNetworkEvent, CardanoSource};
-
 use dcspark_blockchain_source::{GetNextFrom, Source};
 use dcspark_core::{BlockId, SlotNumber};
 use std::borrow::Cow;
-
 use std::time::Duration;
 
 #[derive(Parser, Debug)]
@@ -42,38 +39,38 @@ async fn main() -> anyhow::Result<()> {
         "mainnet" => dcspark_blockchain_source::cardano::NetworkConfiguration::mainnet(),
         "preprod" => dcspark_blockchain_source::cardano::NetworkConfiguration::preprod(),
         "preview" => dcspark_blockchain_source::cardano::NetworkConfiguration::preview(),
+        "sancho" => dcspark_blockchain_source::cardano::NetworkConfiguration::sancho(),
         _ => return Err(anyhow::anyhow!("network not supported by source")),
     };
 
-    let from = match since {
-        None => Origin,
+    let mut pull_from = match since {
+        None => vec![],
         Some(since) => {
             let (since_hash, since_slot) = parse_since(since)?;
-            BlockHeader {
+            vec![BlockHeader {
                 slot_nb: since_slot,
                 hash: since_hash,
-            }
+            }]
         }
     };
 
     let network_config = dcspark_blockchain_source::cardano::NetworkConfiguration {
         relay: (Cow::from(relay_host), relay_port),
-        from: from.clone(),
         ..base_config
     };
 
     let mut source = CardanoSource::connect(&network_config, Duration::from_secs(20)).await?;
 
-    let mut pull_from = from;
-
-    while let Some(event) = source.pull(&vec![pull_from.clone()]).await? {
+    while let Some(event) = source.pull(&pull_from).await? {
         let block = match &event {
             CardanoNetworkEvent::Tip(_) => continue,
             CardanoNetworkEvent::Block(block) => block.clone(),
         };
 
-        let new_from = event.next_from().unwrap_or(pull_from.clone());
-        pull_from = new_from;
+        pull_from = event
+            .next_from()
+            .map(|point| vec![point])
+            .unwrap_or(pull_from.clone());
 
         println!(
             "Block #{}, point: {}@{}, raw cbor hex: {}",

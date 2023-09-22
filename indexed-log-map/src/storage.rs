@@ -158,14 +158,20 @@ impl<Key: Serialize + DeserializeOwned, Value: Serialize + DeserializeOwned>
         }))
     }
 
-    pub fn last(&self) -> Result<Option<Result<Value>>> {
-        Ok(self
+    pub fn last(&self) -> Result<Option<Value>> {
+        let last = self
             .storage
             .last()
-            .map_err(|err| anyhow!("can't get last element of the storage: {:?}", err))?
-            .map(|mmap| -> Result<Value> {
-                ciborium::de::from_reader(mmap.as_slice()).context("can't deserialize cbor rep")
-            }))
+            .map_err(|err| anyhow!("can't get last element of the storage: {:?}", err))?;
+        let value = match last {
+            None => None,
+            Some(mmap) => {
+                let value: Value = ciborium::de::from_reader(mmap.as_slice())
+                    .context("can't deserialize cbor rep")?;
+                Some(value)
+            }
+        };
+        Ok(value)
     }
 }
 

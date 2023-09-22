@@ -43,6 +43,14 @@ impl Era {
         epoch_length_seconds: 86400,
     };
 
+    pub const SHELLEY_SANCHO: Self = Self {
+        first_slot: 0,
+        start_epoch: 0,
+        known_time: 1686789000,
+        slot_length: 1,
+        epoch_length_seconds: 86400,
+    };
+
     pub const fn compute_timestamp(&self, slot: u64) -> u64 {
         self.known_time + (slot - self.first_slot) * self.slot_length
     }

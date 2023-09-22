@@ -130,4 +130,30 @@ impl NetworkConfiguration {
             shelley_era_config: Era::SHELLEY_PREVIEW,
         }
     }
+
+    pub fn sancho() -> Self {
+        Self {
+            chain_info: ChainInfo::Custom {
+                protocol_magic: 4,
+                network_id: 1,
+            },
+            relay: (
+                Cow::Borrowed("sanchonet-node.world.dev.cardano.org."),
+                30004,
+            ),
+            from: Point::BlockHeader {
+                slot_nb: SlotNumber::new(20),
+                hash: BlockId::new(
+                    "6a7d97aae2a65ca790fd14802808b7fce00a3362bd7b21c4ed4ccb4296783b98",
+                ),
+            },
+            genesis_parent: BlockId::new(
+                "6a7d97aae2a65ca790fd14802808b7fce00a3362bd7b21c4ed4ccb4296783b98",
+            ),
+            genesis: BlockId::new(
+                "6a7d97aae2a65ca790fd14802808b7fce00a3362bd7b21c4ed4ccb4296783b98",
+            ),
+            shelley_era_config: Era::SHELLEY_SANCHO,
+        }
+    }
 }

@@ -1,7 +1,9 @@
 use cardano_sdk::chain::{
-    AnyCbor, Header, HeaderShelley, HeaderVasil, MetadataSet, TransactionBodies, TxIndexes,
+    AnyCbor, Coin, Ed25519KeyHashes, Header, HeaderShelley, HeaderVasil, MetadataHash, MetadataSet,
+    Mint, ScriptDataHash, TransactionInputs, TransactionOutput, TransactionOutputs, TxIndexes,
+    Withdrawals,
 };
-use cbored::{CborRepr, DecodeError};
+use cbored::{CborDataOf, CborRepr, DecodeError};
 
 // Currently, cardano-sdk can't parse blocks that have Redeemer fields inside the witnesses,
 // because of an issue deserializing the data field.
@@ -12,6 +14,16 @@ use cbored::{CborRepr, DecodeError};
 // Unfortunately the only way of doing that easily (without patching the library) is to just
 // re-define the block types here, this involves some code duplication, although it also gives us
 // better control.
+
+#[derive(Clone, Debug, CborRepr, PartialEq, Eq)]
+#[cborrepr(structure = "array")]
+pub struct BlockConway {
+    pub header: HeaderVasil,
+    pub tx_bodies: TransactionBodies,
+    pub tx_witnesses: AnyCbor,
+    pub metadata_set: MetadataSet,
+    pub invalid_tx: TxIndexes,
+}
 
 #[derive(Clone, Debug, CborRepr, PartialEq, Eq)]
 #[cborrepr(structure = "array")]
@@ -50,6 +62,7 @@ pub enum Block {
     Block4(BlockShelley),
     Alonzo(BlockAlonzo),
     Vasil(BlockVasil),
+    Conway(BlockConway),
 }
 
 impl Block {
@@ -64,6 +77,7 @@ impl Block {
             Block::Block4(blk) => blk.header.clone().into(),
             Block::Alonzo(blk) => blk.header.clone().into(),
             Block::Vasil(blk) => blk.header.clone().into(),
+            Block::Conway(blk) => blk.header.clone().into(),
         }
     }
 
@@ -74,6 +88,45 @@ impl Block {
             Block::Block4(blk) => &blk.tx_bodies,
             Block::Alonzo(blk) => &blk.tx_bodies,
             Block::Vasil(blk) => &blk.tx_bodies,
+            Block::Conway(blk) => &blk.tx_bodies,
         }
+    }
+}
+
+/// Transaction Body
+#[derive(Clone, Debug, CborRepr, PartialEq, Eq)]
+#[cborrepr(structure = "mapint", skipkey = 10, skipkey = 12)]
+pub struct TransactionBody {
+    #[cborrepr(mandatory)]
+    pub inputs: TransactionInputs,
+    #[cborrepr(mandatory)]
+    pub outputs: TransactionOutputs,
+    #[cborrepr(mandatory)]
+    pub fee: Coin,
+    pub ttl: Option<u64>,
+    pub certs: Option<AnyCbor>,
+    pub withdrawals: Option<Withdrawals>,
+    pub update: Option<AnyCbor>,
+    pub metadata_hash: Option<MetadataHash>,
+    pub validity_start_interval: Option<u64>,
+    pub mint: Option<Mint>,
+    pub script_data_hash: Option<ScriptDataHash>,
+    pub collateral: Option<TransactionInputs>,
+    pub required_signers: Option<Ed25519KeyHashes>,
+    pub network_id: Option<u8>,
+    pub collateral_return: Option<TransactionOutput>,
+    pub total_collateral: Option<Coin>,
+    pub reference_inputs: Option<TransactionInputs>,
+    pub voting_procedures: Option<AnyCbor>,
+    pub proposal_procedures: Option<AnyCbor>,
+    pub current_treasury_value: Option<Coin>,
+    pub donation: Option<AnyCbor>,
+}
+
+cardano_sdk::vec_structure!(TransactionBodies, CborDataOf<TransactionBody>, []);
+
+impl TransactionBodies {
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }

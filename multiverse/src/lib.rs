@@ -298,7 +298,7 @@ where
             let formatted_ir = entry?;
             let ir = deps::serde_json::from_slice(&formatted_ir)?;
 
-            multiverse.insert(ir)?;
+            multiverse.insert_in_memory(ir)?;
         }
 
         Ok(multiverse)
@@ -336,10 +336,27 @@ where
         )
     )]
     pub fn insert(&mut self, variant: V) -> Result<(), MultiverseError> {
-        if !self.db_insert(variant.block_number(), variant.id(), &variant)? {
-            tracing::debug!(counter = %variant.block_number(), key = ?variant.id(), "half backed insert");
+        if !self.db_insert(variant.block_number(), dbg!(variant.id()), &variant)? {
+            if self.all.contains_key(&EntryRef::new(variant.id().clone())) {
+                return Ok(());
+            } else {
+                tracing::debug!(counter = %variant.block_number(), key = ?variant.id(), "half backed insert");
+            }
         }
 
+        self.insert_in_memory(variant)
+    }
+
+    #[tracing::instrument(skip(self, variant)
+        level = "debug",
+        err,
+        fields(
+            block.id = ?variant.id(),
+            block.parent_id = ?variant.parent_id(),
+            block.block_number = %variant.block_number(),
+        )
+    )]
+    fn insert_in_memory(&mut self, variant: V) -> Result<(), MultiverseError> {
         let entry_ref = EntryRef::new(variant.id().clone());
         let parent = EntryRef::new(variant.parent_id().clone());
 
@@ -787,6 +804,41 @@ mod tests {
         });
         assert_eq!(selected, Some(EntryRef::new(K::new("Root"))));
         assert!(discarded.is_empty());
+    }
+
+    #[test]
+    fn multiverse_insert_twice() {
+        let mut m: Multiverse<K, V> = Multiverse::temporary().unwrap();
+
+        for _ in 0..2 {
+            let blockchain = declare_blockchain! { "Root" };
+
+            for block in blockchain {
+                m.insert(block).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn entries_are_loaded_in_main_when_restoring() {
+        let db = sled::Config::new().temporary(true).open().unwrap();
+
+        let blockchain = declare_blockchain! { "Root" };
+
+        let mut multiverse = Multiverse::new_with(db.clone(), "temporary", BlockNumber::MIN);
+
+        for block in blockchain {
+            multiverse.insert(block).unwrap();
+        }
+
+        std::mem::drop(multiverse);
+
+        let multiverse: Multiverse<K, V> =
+            Multiverse::load_from(db, "temporary", BlockNumber::MIN).unwrap();
+
+        multiverse
+            .get(&K::new("Root"))
+            .expect("entries were not restored from db");
     }
 
     struct Simulation {

@@ -551,7 +551,7 @@ impl<Rep> Eq for Value<Rep> {}
 
 impl<Rep> PartialOrd<Self> for Value<Rep> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.value.partial_cmp(&other.value)
+        Some(self.cmp(other))
     }
 }
 

@@ -444,7 +444,6 @@ impl Thermostat {
                     // be careful to re-accumulate the newly created UTxO otherwise we would
                     // be missing out in a potential large chunk of value when computing
                     // the pivot
-                    let total_current_balance = total_current_balance;
                     let total_current_balance = total_current_balance + &change.value;
                     let pivot = total_current_balance / self.config.num_accumulators;
                     let fee_for_output = estimate.fee_for_output(&new)?;

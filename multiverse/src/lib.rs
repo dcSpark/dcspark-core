@@ -205,7 +205,6 @@ where
         key: &K,
         value: &V,
     ) -> Result<bool, MultiverseError> {
-        let counter = counter;
         if self.store_from <= counter {
             let key = mk_sled_key(counter, key);
             let b = self.tree.insert(key, deps::serde_json::to_vec(value)?)?;

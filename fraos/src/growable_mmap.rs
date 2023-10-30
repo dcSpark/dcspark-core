@@ -57,8 +57,9 @@ impl GrowableMmap {
                 }
             }
 
-            if file_length > 0 {
-                let upper_cap = existing_length.unwrap_or(file_length);
+            let upper_cap = existing_length.unwrap_or(file_length);
+
+            if upper_cap > 0 {
                 let mmap = SharedMmap::new(
                     unsafe { MmapOptions::new().offset(0).len(upper_cap).map(file) }
                         .map_err(|err| FraosError::MmapError(MmapError::Mmap(err)))?,
@@ -327,6 +328,7 @@ impl GrowableMmap {
 
     fn create_mmap(&self, new_mmap_size: usize, offset: usize) -> Result<MmapMut, FraosError> {
         if let Some(file) = &self.file {
+            // that fills the file with zeros
             file.set_len((offset + new_mmap_size) as u64)
                 .map_err(|err| FraosError::FileError(FileError::Extend(err)))?;
             unsafe {

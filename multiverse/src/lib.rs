@@ -335,7 +335,7 @@ where
         )
     )]
     pub fn insert(&mut self, variant: V) -> Result<(), MultiverseError> {
-        if !self.db_insert(variant.block_number(), dbg!(variant.id()), &variant)? {
+        if !self.db_insert(variant.block_number(), variant.id(), &variant)? {
             if self.all.contains_key(&EntryRef::new(variant.id().clone())) {
                 return Ok(());
             } else {

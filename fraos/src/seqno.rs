@@ -166,7 +166,7 @@ impl SeqNoIndex {
         // if index is empty we checked already
         while start < len.saturating_sub(1) {
             // we checked before that we have at least one zero and it is ok to access start + 1
-            if self.get_length_at(start)? != 0 && self.get_length_at(start + 1)? == 0 {
+            if self.get_length_at(start + 1)? == 0 {
                 return Ok(start + 1);
             }
             let mid = (start + end) / 2;

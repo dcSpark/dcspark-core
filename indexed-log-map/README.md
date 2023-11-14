@@ -58,6 +58,9 @@ When you call `storage.iter_from(&key)`:
   * then the inner `storage` performs lookup in the raw data file for `offset` and tries to read `length` bytes
   * in case of successful read the data is deserialized to the proper type and returned
 
+### Memory structure:
+![Memory structure](docs/assets/indexed_log_map.jpg)
+
 ### Main functionality
 Methods:
 ```rust

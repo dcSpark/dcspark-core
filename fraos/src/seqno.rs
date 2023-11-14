@@ -25,6 +25,7 @@ impl SeqNoIndex {
         };
 
         if last_len == 0 {
+            // the storage wasn't shrink to fit and we need to find where the index ends
             let actual_len = appender.find_actual_end()?;
             appender = Appender::new(path, Some(2 * Self::SIZE_OF_USIZE * actual_len), writable)
                 .map(|inner| Self { inner })?;
@@ -143,6 +144,10 @@ impl SeqNoIndex {
         self.inner.mmaps_count()
     }
 
+    // The seqno index contains pairs (offset, length), offsets grow monotonically, lengths are always non-zero
+    // If the storage is still open or the storage wasn't shrink to fit properly while dropped it might have tailing zeros
+    // This way to find out what is the actual storage size and what is indexed we need to find the actual end if seqno is not empty.
+    // We utilize binary search to find last non zero value par. This is the actual end
     pub(crate) fn find_actual_end(&self) -> Result<usize, FraosError> {
         let mut start = 0;
         let len = self.len();
@@ -158,7 +163,9 @@ impl SeqNoIndex {
             return Ok(end);
         }
 
+        // if index is empty we checked already
         while start < len.saturating_sub(1) {
+            // we checked before that we have at least one zero and it is ok to access start + 1
             if self.get_length_at(start)? != 0 && self.get_length_at(start + 1)? == 0 {
                 return Ok(start + 1);
             }

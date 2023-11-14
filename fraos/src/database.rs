@@ -95,8 +95,8 @@ impl Database {
             offset += record.len();
         }
 
-        let seqno = self.seqno_index.append(&seqno_index_update)?;
         self.flatfile.append(records)?;
+        let seqno = self.seqno_index.append(&seqno_index_update)?;
 
         Ok(seqno)
     }

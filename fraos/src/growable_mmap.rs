@@ -29,11 +29,10 @@ struct Storage {
     active_map: Option<ActiveMmap>,
 }
 
-/// the struct has an active mutable mmap and inactive tail
+/// the struct has an active mutable mmap (tail) and inactive prefix
 /// if we have enough space we add records to the active mmap
 /// if not we slice the active mmap to the actual end of writes and put it to inactive mmaps
-/// then we create a new mmap with 2x size from previous
-/// if 2x is not enough we create an mmap with size of the data
+/// then we create a new mmap either of size of the data or MIN_MMAP_BYTES
 ///
 pub(crate) struct GrowableMmap {
     storage: RwLock<Storage>,
@@ -57,8 +56,9 @@ impl GrowableMmap {
                 }
             }
 
-            if file_length > 0 {
-                let upper_cap = existing_length.unwrap_or(file_length);
+            let upper_cap = existing_length.unwrap_or(file_length);
+
+            if upper_cap > 0 {
                 let mmap = SharedMmap::new(
                     unsafe { MmapOptions::new().offset(0).len(upper_cap).map(file) }
                         .map_err(|err| FraosError::MmapError(MmapError::Mmap(err)))?,
@@ -327,6 +327,7 @@ impl GrowableMmap {
 
     fn create_mmap(&self, new_mmap_size: usize, offset: usize) -> Result<MmapMut, FraosError> {
         if let Some(file) = &self.file {
+            // that fills the file with zeros
             file.set_len((offset + new_mmap_size) as u64)
                 .map_err(|err| FraosError::FileError(FileError::Extend(err)))?;
             unsafe {

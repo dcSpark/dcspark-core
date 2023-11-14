@@ -17,7 +17,21 @@ impl SeqNoIndex {
     ///
     /// * `path` - the path to the file. It will be created if not exists.
     pub fn new(path: Option<PathBuf>, writable: bool) -> Result<Self, FraosError> {
-        Appender::new(path, None, writable).map(|inner| Self { inner })
+        let mut appender =
+            Appender::new(path.clone(), None, writable).map(|inner| Self { inner })?;
+        let (_, last_len) = match appender.last()? {
+            None => return Ok(appender),
+            Some(some) => some,
+        };
+
+        if last_len == 0 {
+            // the storage wasn't shrink to fit and we need to find where the index ends
+            let actual_len = appender.find_actual_end()?;
+            appender = Appender::new(path, Some(2 * Self::SIZE_OF_USIZE * actual_len), writable)
+                .map(|inner| Self { inner })?;
+        }
+
+        Ok(appender)
     }
 
     /// Add records to index. This function will block if another write is still
@@ -52,6 +66,21 @@ impl SeqNoIndex {
         })?;
 
         Ok(Some(current_seqno))
+    }
+
+    pub fn get_length_at(&self, at: usize) -> Result<usize, FraosError> {
+        Ok(self
+            .get_offset_and_length(at)?
+            .ok_or(FraosError::IndexFileDamaged)?
+            .1)
+    }
+
+    #[allow(unused)]
+    pub fn get_offset_at(&self, at: usize) -> Result<usize, FraosError> {
+        Ok(self
+            .get_offset_and_length(at)?
+            .ok_or(FraosError::IndexFileDamaged)?
+            .0)
     }
 
     /// Get the location of a record with the given number.
@@ -114,12 +143,53 @@ impl SeqNoIndex {
     pub(crate) fn mmaps_count(&self) -> Result<usize, FraosError> {
         self.inner.mmaps_count()
     }
+
+    // The seqno index contains pairs (offset, length), offsets grow monotonically, lengths are always non-zero
+    // If the storage is still open or the storage wasn't shrink to fit properly while dropped it might have tailing zeros
+    // This way to find out what is the actual storage size and what is indexed we need to find the actual end if seqno is not empty.
+    // We utilize binary search to find last non zero value par. This is the actual end
+    pub(crate) fn find_actual_end(&self) -> Result<usize, FraosError> {
+        let mut start = 0;
+        let len = self.len();
+        let mut end = self.len();
+
+        // empty index was created or index is empty
+        if self.get_length_at(start)? == 0 || end == 0 {
+            return Ok(0);
+        }
+
+        // all elements are non-zero
+        if self.get_length_at(end.saturating_sub(1))? != 0 {
+            return Ok(end);
+        }
+
+        // if index is empty we checked already
+        while start < len.saturating_sub(1) {
+            // we checked before that we have at least one zero and it is ok to access start + 1
+            if self.get_length_at(start + 1)? == 0 {
+                return Ok(start + 1);
+            }
+            let mid = (start + end) / 2;
+            if self.get_length_at(mid)? == 0 {
+                end = mid;
+            } else {
+                start = mid;
+            }
+        }
+
+        Err(FraosError::IndexFileDamaged)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::SeqNoIndex;
-    use crate::FraosError;
+
+    use crate::{FileError, FraosError, MmapError};
+    use memmap2::{MmapMut, MmapOptions};
+    use std::fs::{File, OpenOptions};
+    use std::mem::size_of;
+    use std::path::PathBuf;
 
     #[quickcheck]
     fn test_read_write(records: Vec<(usize, usize)>) {
@@ -185,5 +255,114 @@ mod tests {
             result.err().unwrap(),
             FraosError::EmptyRecordAppended
         ));
+    }
+
+    fn get_file(path: PathBuf, writable: bool) -> Result<File, FraosError> {
+        let mut options = OpenOptions::new();
+        options.read(true);
+        if writable {
+            options.write(true).create(true);
+        };
+
+        options
+            .open(&path)
+            .map_err(|err| FraosError::FileError(FileError::FileOpen(path.clone(), err)))
+    }
+
+    fn allocate_mmap(file: &File, size: usize) -> Result<MmapMut, FraosError> {
+        // that fills the file with zeros
+        file.set_len(size as u64)
+            .map_err(|err| FraosError::FileError(FileError::Extend(err)))?;
+        unsafe { MmapOptions::new().len(size).offset(0u64).map_mut(file) }
+            .map_err(|err| FraosError::MmapError(MmapError::Mmap(err)))
+    }
+
+    #[test]
+    fn check_index_recovery_zero_length() {
+        for i in 0..20 {
+            let tmp = tempfile::NamedTempFile::new().unwrap();
+
+            let file = get_file(tmp.path().to_path_buf(), true).unwrap();
+
+            if i != 0 {
+                let mmap = allocate_mmap(&file, size_of::<usize>() * i).unwrap();
+                mmap.flush().unwrap();
+            }
+
+            let index = SeqNoIndex::new(Some(tmp.path().to_path_buf()), true);
+            assert!(index.is_ok(), "can't create seqno index with {} usizes", i);
+            let index = index.unwrap();
+            assert!(index.is_empty());
+
+            index.append(&[(5000, 5), (5005, 6)]).unwrap();
+            drop(index);
+
+            let index = SeqNoIndex::new(Some(tmp.path().to_path_buf()), true);
+            assert!(
+                index.is_ok(),
+                "can't create seqno index with {} usizes after append",
+                i,
+            );
+            let index = index.unwrap();
+            assert_eq!(
+                index.len(),
+                2,
+                "seqno index should have len 2 after append at {}",
+                i
+            );
+        }
+    }
+
+    #[test]
+    fn check_index_recovery_non_zero_length() {
+        for (non_zeros, zeros) in [(2, 0), (100, 0), (2, 1), (2, 5), (2, 10), (258, 400)] {
+            let tmp = tempfile::NamedTempFile::new().unwrap();
+
+            let file = get_file(tmp.path().to_path_buf(), true).unwrap();
+
+            let mut mmap = allocate_mmap(&file, size_of::<usize>() * (non_zeros + zeros)).unwrap();
+            for i in 0..non_zeros {
+                mmap.as_mut()[i * size_of::<usize>()..(i + 1) * size_of::<usize>()]
+                    .copy_from_slice(&i.to_le_bytes()[..]);
+            }
+            mmap.flush().unwrap();
+
+            let index = SeqNoIndex::new(Some(tmp.path().to_path_buf()), true);
+            assert!(
+                index.is_ok(),
+                "can't create seqno index with {} non zeros and {} zeros",
+                non_zeros,
+                zeros
+            );
+            let index = index.unwrap();
+            assert_eq!(
+                index.len(),
+                non_zeros / 2,
+                "seqno index with {} non zeros and {} zeros should have len {}",
+                non_zeros,
+                zeros,
+                non_zeros / 2
+            );
+
+            index.append(&[(5000, 5), (5005, 6)]).unwrap();
+            drop(index);
+
+            let index = SeqNoIndex::new(Some(tmp.path().to_path_buf()), true);
+            assert!(
+                index.is_ok(),
+                "can't create seqno index with {} non zeros and {} zeros after append",
+                non_zeros,
+                zeros
+            );
+            let index = index.unwrap();
+            assert_eq!(
+                index.len(),
+                non_zeros / 2 + 2,
+                "seqno index with {} non zeros and {} zeros should have len {} after append",
+                non_zeros,
+                zeros,
+                non_zeros / 2 + 2
+            );
+        }
     }
 }

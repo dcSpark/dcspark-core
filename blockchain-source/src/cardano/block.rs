@@ -21,8 +21,8 @@ pub struct BlockConway {
     pub header: HeaderVasil,
     pub tx_bodies: TransactionBodies,
     pub tx_witnesses: AnyCbor,
-    pub metadata_set: MetadataSet,
-    pub invalid_tx: TxIndexes,
+    pub metadata_set: AnyCbor,
+    pub invalid_tx: AnyCbor,
 }
 
 #[derive(Clone, Debug, CborRepr, PartialEq, Eq)]

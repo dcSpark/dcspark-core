@@ -11,7 +11,7 @@ pub struct NetworkConfiguration {
     pub relay: (Cow<'static, str>, u16),
     pub from: Point,
     pub genesis_parent: BlockId,
-    pub genesis: BlockId,
+    pub genesis: Point,
     pub shelley_era_config: Era,
 }
 
@@ -61,9 +61,12 @@ impl NetworkConfiguration {
             genesis_parent: BlockId::new(
                 "5f20df933584822601f9e3f8c024eb5eb252fe8cefb24d1317dc3d432e940ebb",
             ),
-            genesis: BlockId::new(
-                "89d9b5a5b8ddc8d7e5a6795e9774d97faf1efea59b2caf7eaf9f8c5b32059df4",
-            ),
+            genesis: Point::BlockHeader {
+                hash: BlockId::new(
+                    "89d9b5a5b8ddc8d7e5a6795e9774d97faf1efea59b2caf7eaf9f8c5b32059df4",
+                ),
+                slot_nb: SlotNumber::new(0),
+            },
             shelley_era_config: Era::SHELLEY_MAINNET,
         }
     }
@@ -84,9 +87,12 @@ impl NetworkConfiguration {
             genesis_parent: BlockId::new(
                 "96fceff972c2c06bd3bb5243c39215333be6d56aaf4823073dca31afe5038471",
             ),
-            genesis: BlockId::new(
-                "8f8602837f7c6f8b8867dd1cbc1842cf51a27eaed2c70ef48325d00f8efb320f",
-            ),
+            genesis: Point::BlockHeader {
+                hash: BlockId::new(
+                    "8f8602837f7c6f8b8867dd1cbc1842cf51a27eaed2c70ef48325d00f8efb320f",
+                ),
+                slot_nb: SlotNumber::new(0),
+            },
             shelley_era_config: Era::SHELLEY_TESTNET,
         }
     }
@@ -104,9 +110,12 @@ impl NetworkConfiguration {
             genesis_parent: BlockId::new(
                 "d4b8de7a11d929a323373cbab6c1a9bdc931beffff11db111cf9d57356ee1937",
             ),
-            genesis: BlockId::new(
-                "9ad7ff320c9cf74e0f5ee78d22a85ce42bb0a487d0506bf60cfb5a91ea4497d2",
-            ),
+            genesis: Point::BlockHeader {
+                hash: BlockId::new(
+                    "9ad7ff320c9cf74e0f5ee78d22a85ce42bb0a487d0506bf60cfb5a91ea4497d2",
+                ),
+                slot_nb: SlotNumber::new(0),
+            },
             shelley_era_config: Era::SHELLEY_PREPROD,
         }
     }
@@ -124,9 +133,12 @@ impl NetworkConfiguration {
             genesis_parent: BlockId::new(
                 "72593f260b66f26bef4fc50b38a8f24d3d3633ad2e854eaf73039eb9402706f1",
             ),
-            genesis: BlockId::new(
-                "268ae601af8f9214804735910a3301881fbe0eec9936db7d1fb9fc39e93d1e37",
-            ),
+            genesis: Point::BlockHeader {
+                hash: BlockId::new(
+                    "268ae601af8f9214804735910a3301881fbe0eec9936db7d1fb9fc39e93d1e37",
+                ),
+                slot_nb: SlotNumber::new(0),
+            },
             shelley_era_config: Era::SHELLEY_PREVIEW,
         }
     }
@@ -137,10 +149,7 @@ impl NetworkConfiguration {
                 protocol_magic: 4,
                 network_id: 1,
             },
-            relay: (
-                Cow::Borrowed("sanchonet-node.world.dev.cardano.org."),
-                30004,
-            ),
+            relay: (Cow::Borrowed("sanchonet-node.world.dev.cardano.org."), 3004),
             from: Point::BlockHeader {
                 slot_nb: SlotNumber::new(20),
                 hash: BlockId::new(
@@ -148,11 +157,14 @@ impl NetworkConfiguration {
                 ),
             },
             genesis_parent: BlockId::new(
-                "6a7d97aae2a65ca790fd14802808b7fce00a3362bd7b21c4ed4ccb4296783b98",
+                "785eb88427e136378a15b0a152a8bfbeec7a611529ccda29c43a1e60ffb48eaa",
             ),
-            genesis: BlockId::new(
-                "6a7d97aae2a65ca790fd14802808b7fce00a3362bd7b21c4ed4ccb4296783b98",
-            ),
+            genesis: Point::BlockHeader {
+                hash: BlockId::new(
+                    "6a7d97aae2a65ca790fd14802808b7fce00a3362bd7b21c4ed4ccb4296783b98",
+                ),
+                slot_nb: SlotNumber::new(20),
+            },
             shelley_era_config: Era::SHELLEY_SANCHO,
         }
     }

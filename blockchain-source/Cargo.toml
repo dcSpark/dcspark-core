@@ -23,3 +23,6 @@ serde = { version = "1.0.144" }
 tokio = { version = "1", features = [ "full" ] }
 thiserror = { version = "1.0" }
 tracing = { version = "0.1" }
+cml-multi-era = { version = "5.3.1" }
+cml-chain = { version = "5.3.1" }
+cml-core = { version = "5.3.1" }

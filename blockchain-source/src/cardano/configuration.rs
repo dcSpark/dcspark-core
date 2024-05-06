@@ -1,5 +1,4 @@
 use super::{time::Era, Point};
-use cardano_sdk::protocol::Magic;
 use dcspark_core::{BlockId, SlotNumber};
 use std::borrow::Cow;
 
@@ -21,27 +20,24 @@ pub enum ChainInfo {
     Preprod,
     Preview,
     Testnet,
+    SanchoNet,
     Custom { protocol_magic: u64, network_id: u8 },
 }
 
-impl From<ChainInfo> for cardano_sdk::chaininfo::ChainInfo {
+impl From<ChainInfo> for cml_chain::genesis::network_info::NetworkInfo {
     fn from(info: ChainInfo) -> Self {
         match info {
-            ChainInfo::Mainnet => cardano_sdk::chaininfo::ChainInfo::MAINNET,
-            ChainInfo::Preprod => cardano_sdk::chaininfo::ChainInfo::PREPROD,
-            ChainInfo::Testnet => cardano_sdk::chaininfo::ChainInfo::TESTNET,
-            ChainInfo::Preview => cardano_sdk::chaininfo::ChainInfo {
-                protocol_magic: Magic(2),
-                network_id: 0b0000,
-                bech32_hrp_address: "addr_test",
-            },
+            ChainInfo::Mainnet => cml_chain::genesis::network_info::NetworkInfo::mainnet(),
+            ChainInfo::Preprod => cml_chain::genesis::network_info::NetworkInfo::preprod(),
+            ChainInfo::Testnet => cml_chain::genesis::network_info::NetworkInfo::testnet(),
+            ChainInfo::Preview => cml_chain::genesis::network_info::NetworkInfo::preview(),
+            ChainInfo::SanchoNet => cml_chain::genesis::network_info::NetworkInfo::sancho_testnet(),
             ChainInfo::Custom {
                 protocol_magic,
                 network_id,
-            } => cardano_sdk::chaininfo::ChainInfo {
-                protocol_magic: Magic(protocol_magic),
+            } => cml_chain::genesis::network_info::NetworkInfo {
+                protocol_magic: cml_core::network::ProtocolMagic::from(protocol_magic as u32),
                 network_id,
-                bech32_hrp_address: "addr_test",
             },
         }
     }

@@ -1,5 +1,3 @@
-pub mod block;
-mod byron;
 mod configuration;
 mod event;
 mod point;
@@ -307,7 +305,7 @@ async fn block_fetch(
         }
     }
 
-    debug!("block range request finished succesfully");
+    debug!("block range request finished successfully");
 
     Ok(())
 }

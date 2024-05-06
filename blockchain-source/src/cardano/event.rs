@@ -1,6 +1,6 @@
 use crate::cardano::time::Era;
 use crate::{EventObject, GetNextFrom};
-use anyhow::{anyhow};
+use anyhow::anyhow;
 use dcspark_core::{BlockId, BlockNumber, SlotNumber};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -105,7 +105,8 @@ impl<Tip> GetNextFrom for CardanoNetworkEvent<BlockEvent, Tip> {
 
 impl BlockEvent {
     pub(crate) fn from_serialized_block(raw_block: &[u8], era: &Era) -> anyhow::Result<Self> {
-        let block = cml_multi_era::MultiEraBlock::from_explicit_network_cbor_bytes(raw_block).expect("failed to deserialize block");
+        let block = cml_multi_era::MultiEraBlock::from_explicit_network_cbor_bytes(raw_block)
+            .expect("failed to deserialize block");
         let header = &block.header();
         Ok(BlockEvent {
             raw_block: raw_block.to_vec(),
@@ -114,8 +115,11 @@ impl BlockEvent {
             block_number: BlockNumber::new(header.block_number()),
             slot_number: SlotNumber::new(header.slot()),
             is_boundary_block: match &block {
-                cml_multi_era::MultiEraBlock::Byron(bb) => matches!(bb, cml_multi_era::byron::block::ByronBlock::EpochBoundary(_)),
-                _ => false
+                cml_multi_era::MultiEraBlock::Byron(bb) => matches!(
+                    bb,
+                    cml_multi_era::byron::block::ByronBlock::EpochBoundary(_)
+                ),
+                _ => false,
             },
             // this is not in the header, and computing it requires knowing the network
             // details, which makes implementing `Serialize` and `Deserialize`more complicated,
@@ -123,12 +127,16 @@ impl BlockEvent {
             // it can be computed later inside carp, since we don't need this in the bridge.
             epoch: match &block {
                 cml_multi_era::MultiEraBlock::Byron(bb) => match bb {
-                    cml_multi_era::byron::block::ByronBlock::EpochBoundary(eb) => eb.header.consensus_data.epoch_id,
-                    cml_multi_era::byron::block::ByronBlock::Main(m) => m.header.consensus_data.byron_slot_id.epoch,
+                    cml_multi_era::byron::block::ByronBlock::EpochBoundary(eb) => {
+                        eb.header.consensus_data.epoch_id
+                    }
+                    cml_multi_era::byron::block::ByronBlock::Main(m) => {
+                        m.header.consensus_data.byron_slot_id.epoch
+                    }
                 },
                 _ => era
-                .absolute_slot_to_epoch(header.slot())
-                .ok_or(anyhow!("can't detect epoch of block"))?
+                    .absolute_slot_to_epoch(header.slot())
+                    .ok_or(anyhow!("can't detect epoch of block"))?,
             },
         })
     }

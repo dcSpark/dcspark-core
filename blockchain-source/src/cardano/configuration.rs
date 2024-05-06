@@ -2,11 +2,9 @@ use super::{time::Era, Point};
 use dcspark_core::{BlockId, SlotNumber};
 use std::borrow::Cow;
 
-#[derive(Clone, Debug, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug)]
 pub struct NetworkConfiguration {
-    pub chain_info: ChainInfo,
+    pub chain_info: cml_chain::genesis::network_info::NetworkInfo,
     pub relay: (Cow<'static, str>, u16),
     pub from: Point,
     pub genesis_parent: BlockId,
@@ -14,39 +12,10 @@ pub struct NetworkConfiguration {
     pub shelley_era_config: Era,
 }
 
-#[derive(Clone, Debug, serde::Deserialize)]
-pub enum ChainInfo {
-    Mainnet,
-    Preprod,
-    Preview,
-    Testnet,
-    SanchoNet,
-    Custom { protocol_magic: u64, network_id: u8 },
-}
-
-impl From<ChainInfo> for cml_chain::genesis::network_info::NetworkInfo {
-    fn from(info: ChainInfo) -> Self {
-        match info {
-            ChainInfo::Mainnet => cml_chain::genesis::network_info::NetworkInfo::mainnet(),
-            ChainInfo::Preprod => cml_chain::genesis::network_info::NetworkInfo::preprod(),
-            ChainInfo::Testnet => cml_chain::genesis::network_info::NetworkInfo::testnet(),
-            ChainInfo::Preview => cml_chain::genesis::network_info::NetworkInfo::preview(),
-            ChainInfo::SanchoNet => cml_chain::genesis::network_info::NetworkInfo::sancho_testnet(),
-            ChainInfo::Custom {
-                protocol_magic,
-                network_id,
-            } => cml_chain::genesis::network_info::NetworkInfo {
-                protocol_magic: cml_core::network::ProtocolMagic::from(protocol_magic as u32),
-                network_id,
-            },
-        }
-    }
-}
-
 impl NetworkConfiguration {
     pub fn mainnet() -> Self {
         Self {
-            chain_info: ChainInfo::Mainnet,
+            chain_info: cml_chain::genesis::network_info::NetworkInfo::mainnet(),
             relay: (Cow::Borrowed("relays-new.cardano-mainnet.iohk.io."), 3001),
             from: Point::BlockHeader {
                 slot_nb: SlotNumber::new(4492800),
@@ -66,7 +35,7 @@ impl NetworkConfiguration {
 
     pub fn testnet() -> Self {
         Self {
-            chain_info: ChainInfo::Testnet,
+            chain_info: cml_chain::genesis::network_info::NetworkInfo::testnet(),
             relay: (
                 Cow::Borrowed("relays-new.cardano-testnet.iohkdev.io."),
                 3001,
@@ -89,7 +58,7 @@ impl NetworkConfiguration {
 
     pub fn preprod() -> Self {
         Self {
-            chain_info: ChainInfo::Preprod,
+            chain_info: cml_chain::genesis::network_info::NetworkInfo::preprod(),
             relay: (Cow::Borrowed("preprod-node.world.dev.cardano.org."), 30000),
             from: Point::BlockHeader {
                 slot_nb: SlotNumber::new(86400),
@@ -109,7 +78,7 @@ impl NetworkConfiguration {
 
     pub fn preview() -> Self {
         Self {
-            chain_info: ChainInfo::Preview,
+            chain_info: cml_chain::genesis::network_info::NetworkInfo::preview(),
             relay: (Cow::Borrowed("preview-node.world.dev.cardano.org."), 30002),
             from: Point::BlockHeader {
                 slot_nb: SlotNumber::new(25400),
@@ -129,10 +98,10 @@ impl NetworkConfiguration {
 
     pub fn sancho() -> Self {
         Self {
-            chain_info: ChainInfo::Custom {
-                protocol_magic: 4,
-                network_id: 1,
-            },
+            chain_info: cml_chain::genesis::network_info::NetworkInfo::new(
+                1,
+                cml_core::network::ProtocolMagic::from(4),
+            ),
             relay: (
                 Cow::Borrowed("sanchonet-node.world.dev.cardano.org."),
                 30004,

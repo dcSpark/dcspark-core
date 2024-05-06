@@ -11,7 +11,7 @@ use anyhow::{Context as _, Result};
 use cardano_net::{NetworkDescription, NetworkHandle};
 pub use cardano_sdk::protocol::Tip;
 use cardano_sdk::protocol::Version;
-pub use configuration::{ChainInfo, NetworkConfiguration};
+pub use configuration::{NetworkConfiguration};
 use dcspark_core::critical_error;
 pub use point::*;
 use tokio::sync::{mpsc, oneshot};
@@ -99,7 +99,11 @@ impl CardanoSource {
 
         let config = NetworkDescription {
             anchor_hosts: vec![(url.to_string(), *port)],
-            chain_info: network_config.chain_info.clone().into(),
+            chain_info: cardano_sdk::chaininfo::ChainInfo {
+                protocol_magic: cardano_sdk::protocol::Magic(u32::from(network_config.chain_info.protocol_magic()) as u64),
+                network_id: network_config.chain_info.network_id(),
+                bech32_hrp_address: if network_config.chain_info == cml_chain::genesis::network_info::NetworkInfo::mainnet() { "addr" } else { "addr_test" },
+            },
             net_versions: vec![Version::V6, Version::V7, Version::V8],
             known_points: vec![],
         };

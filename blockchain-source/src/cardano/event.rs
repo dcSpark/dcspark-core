@@ -124,7 +124,6 @@ impl BlockEvent {
             // this is not in the header, and computing it requires knowing the network
             // details, which makes implementing `Serialize` and `Deserialize`more complicated,
             // unless we serialize this field too.
-            // it can be computed later inside carp, since we don't need this in the bridge.
             epoch: match &block {
                 cml_multi_era::MultiEraBlock::Byron(bb) => match bb {
                     cml_multi_era::byron::block::ByronBlock::EpochBoundary(eb) => {

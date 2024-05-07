@@ -1,6 +1,6 @@
 use crate::cardano::time::Era;
 use crate::{EventObject, GetNextFrom};
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
 use dcspark_core::{BlockId, BlockNumber, SlotNumber};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -49,10 +49,10 @@ impl<Block, Tip> CardanoNetworkEvent<Block, Tip> {
     }
 }
 
-pub(crate) fn get_parent_id(header: &cardano_sdk::chain::Header) -> BlockId {
+pub(crate) fn get_parent_id(header: &cml_multi_era::utils::MultiEraBlockHeader) -> BlockId {
     header
         .prev_hash()
-        .option_ref()
+        .as_ref()
         .map(|id| BlockId::new(id.to_string()))
         .unwrap_or_else(|| BlockId::new_static("0x0000000000000000000000000000000000000000"))
 }
@@ -105,50 +105,38 @@ impl<Tip> GetNextFrom for CardanoNetworkEvent<BlockEvent, Tip> {
 
 impl BlockEvent {
     pub(crate) fn from_serialized_block(raw_block: &[u8], era: &Era) -> anyhow::Result<Self> {
-        let block: anyhow::Result<crate::cardano::block::Block> =
-            cbored::decode_from_bytes(raw_block).context("failed to deserialize block");
-
-        if let Ok(block) = block {
-            let header = block.header();
-            let id = BlockId::new(header.hash().to_string());
-            let block_number = BlockNumber::new(header.block_number());
-
-            let parent_id = get_parent_id(&block.header());
-
-            Ok(BlockEvent {
-                raw_block: raw_block.to_vec(),
-                id,
-                parent_id,
-                block_number,
-                slot_number: SlotNumber::new(header.slot()),
-                is_boundary_block: false,
-                // this is not in the header, and computing it requires knowing the network
-                // details, which makes implementing `Serialize` and `Deserialize`more complicated,
-                // unless we serialize this field too.
-                // it can be computed later inside carp, since we don't need this in the bridge.
-                epoch: era
+        let block = cml_multi_era::MultiEraBlock::from_explicit_network_cbor_bytes(raw_block)
+            .expect("failed to deserialize block");
+        let header = &block.header();
+        Ok(BlockEvent {
+            raw_block: raw_block.to_vec(),
+            id: BlockId::new(hex::encode(block.hash())),
+            parent_id: get_parent_id(header),
+            block_number: BlockNumber::new(header.block_number()),
+            slot_number: SlotNumber::new(header.slot()),
+            is_boundary_block: match &block {
+                cml_multi_era::MultiEraBlock::Byron(bb) => matches!(
+                    bb,
+                    cml_multi_era::byron::block::ByronBlock::EpochBoundary(_)
+                ),
+                _ => false,
+            },
+            // this is not in the header, and computing it requires knowing the network
+            // details, which makes implementing `Serialize` and `Deserialize`more complicated,
+            // unless we serialize this field too.
+            epoch: match &block {
+                cml_multi_era::MultiEraBlock::Byron(bb) => match bb {
+                    cml_multi_era::byron::block::ByronBlock::EpochBoundary(eb) => {
+                        eb.header.consensus_data.epoch_id
+                    }
+                    cml_multi_era::byron::block::ByronBlock::Main(m) => {
+                        m.header.consensus_data.byron_slot_id.epoch
+                    }
+                },
+                _ => era
                     .absolute_slot_to_epoch(header.slot())
                     .ok_or(anyhow!("can't detect epoch of block"))?,
-            })
-        } else if let Ok(block) = crate::cardano::byron::ByronBlock::decode(raw_block) {
-            let header = block.header();
-            let event = BlockEvent {
-                raw_block: raw_block.to_vec(),
-                id: BlockId::new(block.hash().to_string()),
-                parent_id: BlockId::new(header.previous_hash().to_string()),
-                block_number: header.block_number(),
-                slot_number: header.slot_number(),
-                is_boundary_block: block.is_boundary(),
-                epoch: header.epoch(),
-            };
-
-            Ok(event)
-        } else {
-            tracing::error!(
-                block = hex::encode(raw_block),
-                "failed to deserialize block"
-            );
-            block.map(|_| unreachable! {})
-        }
+            },
+        })
     }
 }

@@ -205,10 +205,7 @@ async fn request_handler(
                 slot_nb: 0.into(),
                 hash: network_config.genesis_parent.clone(),
             }] {
-            vec![Point::BlockHeader {
-                hash: network_config.genesis.clone(),
-                slot_nb: 0.into(),
-            }]
+            vec![network_config.genesis.clone()]
         } else {
             from
         };

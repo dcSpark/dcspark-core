@@ -200,14 +200,14 @@ async fn request_handler(
 
         let mut current_handle = handle.take().unwrap();
 
-        let from = if from
+        let (from, ignore_first_block) = if from
             == vec![Point::BlockHeader {
                 slot_nb: 0.into(),
                 hash: network_config.genesis_parent.clone(),
             }] {
-            vec![network_config.genesis.clone()]
+            (vec![network_config.genesis.clone()], false)
         } else {
-            from
+            (from, true)
         };
 
         if let Err(e) = block_fetch(
@@ -217,6 +217,7 @@ async fn request_handler(
             &mut last_tip_event,
             tip_update_pace,
             &network_config,
+            ignore_first_block,
         )
         .await
         {
@@ -238,6 +239,7 @@ async fn block_fetch(
     last_tip_event: &mut Instant,
     tip_update_pace: Duration,
     network_config: &NetworkConfiguration,
+    ignore_first_block: bool,
 ) -> Result<()> {
     let points: Result<Vec<_>> = from
         .into_iter()
@@ -294,9 +296,11 @@ async fn block_fetch(
         }
     };
 
-    // the from in request_range is inclusive, but the from in `pull` is not supposed to be
-    // included, so skip the first block (which will be one of the checkpoints)
-    let _ = block_fetcher.next().await?;
+    if ignore_first_block {
+        // the from in request_range is inclusive, but the from in `pull` is not supposed to be
+        // included, so skip the first block (which will be one of the checkpoints)
+        let _ = block_fetcher.next().await?;
+    }
 
     while let Some(raw_block) = block_fetcher.next().await? {
         let event = BlockEvent::from_serialized_block(

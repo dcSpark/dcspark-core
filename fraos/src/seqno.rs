@@ -90,7 +90,7 @@ impl SeqNoIndex {
     ) -> Result<Option<(usize, usize)>, FraosError> {
         let offset = seqno * Self::SIZE_OF_USIZE * 2;
 
-        match self.inner.get_data(offset, |mmap| {
+        let result = self.inner.get_data(offset, |mmap| {
             let mut offset_buffer = [0u8; Self::SIZE_OF_USIZE];
             let mut length_buffer = [0u8; Self::SIZE_OF_USIZE];
             offset_buffer.copy_from_slice(&mmap[..Self::SIZE_OF_USIZE]);
@@ -100,7 +100,9 @@ impl SeqNoIndex {
                 usize::from_le_bytes(offset_buffer),
                 usize::from_le_bytes(length_buffer),
             )))
-        })? {
+        })?;
+
+        match result {
             None => Ok(None),
             Some(results) => Ok(Some(results)),
         }

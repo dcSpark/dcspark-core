@@ -50,6 +50,51 @@ where
     }
 }
 
+pub struct BigDecimalVisitor<T> {
+    /// Unused type.
+    _marker: PhantomData<T>,
+}
+
+impl<T> Default for BigDecimalVisitor<T> {
+    fn default() -> Self {
+        Self {
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<'de, T> serde::de::Visitor<'de> for BigDecimalVisitor<T>
+where
+    T: TryFrom<BigDecimal>,
+    <T as TryFrom<BigDecimal>>::Error: std::fmt::Display,
+{
+    type Value = T;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "to deserialise {} from a numerical or a string value",
+            any::type_name::<T>()
+        )
+    }
+
+    fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        let v: BigDecimal = BigDecimal::from(v);
+        T::try_from(v).map_err(E::custom)
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        let v: BigDecimal = value.parse::<BigDecimal>().map_err(E::custom)?;
+        T::try_from(v).map_err(E::custom)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,50 +149,5 @@ mod tests {
         let result = deps::serde_json::to_string(&sample).unwrap();
 
         property::equal(input, result)
-    }
-}
-
-pub struct BigDecimalVisitor<T> {
-    /// Unused type.
-    _marker: PhantomData<T>,
-}
-
-impl<T> Default for BigDecimalVisitor<T> {
-    fn default() -> Self {
-        Self {
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'de, T> serde::de::Visitor<'de> for BigDecimalVisitor<T>
-where
-    T: TryFrom<BigDecimal>,
-    <T as TryFrom<BigDecimal>>::Error: std::fmt::Display,
-{
-    type Value = T;
-
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "to deserialise {} from a numerical or a string value",
-            any::type_name::<T>()
-        )
-    }
-
-    fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        let v: BigDecimal = BigDecimal::from(v);
-        T::try_from(v).map_err(E::custom)
-    }
-
-    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        let v: BigDecimal = value.parse::<BigDecimal>().map_err(E::custom)?;
-        T::try_from(v).map_err(E::custom)
     }
 }

@@ -23,6 +23,6 @@ serde = { version = "1.0.144" }
 tokio = { version = "1", features = [ "full" ] }
 thiserror = { version = "1.0" }
 tracing = { version = "0.1" }
-cml-multi-era = { version = "5.3.1" }
-cml-chain = { version = "5.3.1" }
-cml-core = { version = "5.3.1" }
+cml-multi-era = { git = "https://github.com/dcSpark/cardano-multiplatform-lib", rev = "8999325933c131af8ac474fe8556e585ca39659c" }
+cml-chain = { git = "https://github.com/dcSpark/cardano-multiplatform-lib", rev = "8999325933c131af8ac474fe8556e585ca39659c" }
+cml-core = { git = "https://github.com/dcSpark/cardano-multiplatform-lib", rev = "8999325933c131af8ac474fe8556e585ca39659c" }

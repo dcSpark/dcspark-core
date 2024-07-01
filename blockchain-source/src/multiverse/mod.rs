@@ -300,7 +300,7 @@ mod tests {
         type From = Vec<K>;
 
         async fn pull(&mut self, from: &Self::From) -> Result<Option<Self::Event>> {
-            Ok(self.chain.get(&from.get(0).cloned()).cloned())
+            Ok(self.chain.get(&from.first().cloned()).cloned())
         }
     }
 

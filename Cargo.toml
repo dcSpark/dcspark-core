@@ -1,17 +1,20 @@
 [workspace]
 members = [
     "blockchain-source",
-    "cardano-utils",
     "core",
     "deps",
     "fraos",
     "indexed-log-map",
     "multiverse",
-    "utxo-selection",
-    "cardano-cli-tools/cip1852-first-address",
     "cardano-cli-tools/oura-block-fetcher",
     "cardano-cli-tools/cardano-net-fetcher",
 ]
+exclude = [
+    "cardano-cli-tools/cip1852-first-address",
+    "utxo-selection",
+    "cardano-utils",
+]
+
 
 [workspace.metadata.release]
 shared-version = false

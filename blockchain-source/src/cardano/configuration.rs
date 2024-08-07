@@ -2,7 +2,9 @@ use super::{time::Era, Point};
 use dcspark_core::{BlockId, SlotNumber};
 use std::borrow::Cow;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[serde(deny_unknown_fields)]
 pub struct NetworkConfiguration {
     pub chain_info: cml_chain::genesis::network_info::NetworkInfo,
     pub relay: (Cow<'static, str>, u16),
@@ -135,5 +137,49 @@ impl NetworkConfiguration {
             },
             shelley_era_config: Era::SHELLEY_SANCHO,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NetworkConfiguration;
+
+    #[test]
+    fn custom_json_network() {
+        println!(
+            "{}",
+            deps::serde_json::to_string_pretty(&NetworkConfiguration::mainnet()).unwrap()
+        );
+        let json = r#"{
+            "chain_info": {
+                "network_id": 1,
+                "protocol_magic": 764824073
+            },
+            "relay": [
+                "relays-new.cardano-mainnet.iohk.io.",
+                3001
+            ],
+            "from": {
+                "BlockHeader": {
+                "slot_nb": 4492800,
+                "hash": "aa83acbf5904c0edfe4d79b3689d3d00fcfc553cf360fd2229b98d464c28e9de"
+                }
+            },
+            "genesis_parent": "5f20df933584822601f9e3f8c024eb5eb252fe8cefb24d1317dc3d432e940ebb",
+            "genesis": {
+                "BlockHeader": {
+                "slot_nb": 0,
+                "hash": "89d9b5a5b8ddc8d7e5a6795e9774d97faf1efea59b2caf7eaf9f8c5b32059df4"
+                }
+            },
+            "shelley_era_config": {
+                "first_slot": 4492800,
+                "start_epoch": 208,
+                "known_time": 1596059091,
+                "slot_length": 1,
+                "epoch_length_seconds": 432000
+            }
+            }"#;
+        let _config: NetworkConfiguration = deps::serde_json::from_str(json).unwrap();
     }
 }

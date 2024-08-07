@@ -2,7 +2,9 @@ use super::{time::Era, Point};
 use dcspark_core::{BlockId, SlotNumber};
 use std::borrow::Cow;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[serde(deny_unknown_fields)]
 pub struct NetworkConfiguration {
     pub chain_info: cml_chain::genesis::network_info::NetworkInfo,
     pub relay: (Cow<'static, str>, u16),

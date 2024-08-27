@@ -1,7 +1,7 @@
 const EPOCH_LENGTH_IN_SECONDS: u64 = 432000;
 const BYRON_SLOT_DURATION: u64 = 20;
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Era {
     pub first_slot: u64,
     pub start_epoch: u64,

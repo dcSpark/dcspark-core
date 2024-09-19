@@ -13,8 +13,6 @@ multiverse = { path = "../multiverse" }
 anyhow = { version = "1" }
 async-trait = { version = "0.1.57" }
 
-cardano-net = { version = "0.2.1" }
-cardano-sdk = { version = "0.2.4" }
 cbored = { version = "0.3.3" }
 cbored-derive = { version = "0.3.1" }
 cryptoxide = { version = "0.4.2" }
@@ -26,3 +24,5 @@ tracing = { version = "0.1" }
 cml-multi-era = { git = "https://github.com/dcSpark/cardano-multiplatform-lib", rev = "25ff92b4f6cf0f5dc98f0df3ab812a23af467e98" }
 cml-chain = { git = "https://github.com/dcSpark/cardano-multiplatform-lib", rev = "25ff92b4f6cf0f5dc98f0df3ab812a23af467e98" }
 cml-core = { git = "https://github.com/dcSpark/cardano-multiplatform-lib", rev = "25ff92b4f6cf0f5dc98f0df3ab812a23af467e98" }
+
+pallas-network = "0.30.2"

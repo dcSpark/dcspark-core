@@ -22,3 +22,12 @@ impl TryFrom<Point> for pallas_network::miniprotocols::Point {
         }
     }
 }
+
+impl Point {
+    pub fn slot_nb(&self) -> SlotNumber {
+        match self {
+            Point::Origin => SlotNumber::from(0),
+            Point::BlockHeader { slot_nb, hash: _ } => slot_nb.clone(),
+        }
+    }
+}

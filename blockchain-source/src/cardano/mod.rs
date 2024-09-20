@@ -12,10 +12,9 @@ use cml_multi_era::byron::block::{ByronBlockHeader, EbbHead};
 use cml_multi_era::shelley::ShelleyHeader;
 pub use configuration::NetworkConfiguration;
 use cryptoxide::hashing::blake2b_256;
-use dcspark_core::critical_error;
+use dcspark_core::{critical_error, SlotNumber};
 use pallas_network::facades::PeerClient;
 use pallas_network::miniprotocols::chainsync;
-use pallas_network::miniprotocols::chainsync::Tip;
 pub use point::*;
 use std::time::Instant;
 use tokio::sync::{mpsc, oneshot};
@@ -24,12 +23,15 @@ use tracing::{debug, error, info, warn, Instrument};
 
 const TX_PROCESSING_CHANNEL_BOUND: usize = 1000;
 
+pub type Tip = pallas_network::miniprotocols::chainsync::Tip;
+
 type Event = CardanoNetworkEvent<BlockEvent, Tip>;
 
 pub struct CardanoSource {
     service: mpsc::Sender<(Vec<Point>, mpsc::Sender<Result<Event>>)>,
     current: Option<mpsc::Receiver<Result<Event>>>,
     exit_rx: oneshot::Receiver<()>,
+    default_from: Point,
 }
 
 #[async_trait::async_trait]
@@ -72,6 +74,12 @@ impl Source for CardanoSource {
         let (tx, rx) = mpsc::channel(TX_PROCESSING_CHANNEL_BOUND);
 
         let from = if from.is_empty() {
+            vec![self.default_from.clone()]
+        } else if from
+            .first()
+            .map(|point| point.slot_nb() == SlotNumber::from(0))
+            .unwrap_or(false)
+        {
             vec![Point::Origin]
         } else {
             from.clone()
@@ -115,6 +123,7 @@ impl CardanoSource {
             service: tx,
             current: None,
             exit_rx,
+            default_from: network_config.from.clone().unwrap_or(Point::Origin),
         })
     }
 

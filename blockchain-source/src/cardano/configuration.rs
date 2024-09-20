@@ -1,4 +1,4 @@
-use super::time::Era;
+use super::{time::Era, Point};
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -7,6 +7,7 @@ pub struct NetworkConfiguration {
     pub chain_info: cml_chain::genesis::network_info::NetworkInfo,
     pub relay: (String, u16),
     pub shelley_era_config: Era,
+    pub from: Option<Point>,
 }
 
 impl NetworkConfiguration {
@@ -15,6 +16,7 @@ impl NetworkConfiguration {
             chain_info: cml_chain::genesis::network_info::NetworkInfo::mainnet(),
             relay: ("relays-new.cardano-mainnet.iohk.io.".to_string(), 3001),
             shelley_era_config: Era::SHELLEY_MAINNET,
+            from: None,
         }
     }
 
@@ -23,6 +25,7 @@ impl NetworkConfiguration {
             chain_info: cml_chain::genesis::network_info::NetworkInfo::testnet(),
             relay: ("relays-new.cardano-testnet.iohkdev.io.".to_string(), 3001),
             shelley_era_config: Era::SHELLEY_TESTNET,
+            from: None,
         }
     }
 
@@ -31,6 +34,7 @@ impl NetworkConfiguration {
             chain_info: cml_chain::genesis::network_info::NetworkInfo::preprod(),
             relay: ("preprod-node.world.dev.cardano.org.".to_string(), 30000),
             shelley_era_config: Era::SHELLEY_PREPROD,
+            from: None,
         }
     }
 
@@ -39,6 +43,7 @@ impl NetworkConfiguration {
             chain_info: cml_chain::genesis::network_info::NetworkInfo::preview(),
             relay: ("preview-node.world.dev.cardano.org.".to_string(), 30002),
             shelley_era_config: Era::SHELLEY_PREVIEW,
+            from: None,
         }
     }
 
@@ -50,6 +55,7 @@ impl NetworkConfiguration {
             ),
             relay: ("sanchonet-node.world.dev.cardano.org.".to_string(), 30004),
             shelley_era_config: Era::SHELLEY_SANCHO,
+            from: None,
         }
     }
 }

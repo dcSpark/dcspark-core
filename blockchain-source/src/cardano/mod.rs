@@ -257,6 +257,12 @@ async fn block_fetch(
         *last_tip_event = Instant::now();
     }
 
+    // if we receive an Await we just return on the source, but we need to avoid
+    // calling request_next again the next time.
+    if !handle.chainsync.has_agency() {
+        return Ok(());
+    }
+
     let raw_header = match handle.chainsync.request_next().await? {
         chainsync::NextResponse::RollForward(block_header, _) => block_header,
         chainsync::NextResponse::RollBackward(point, _) => {

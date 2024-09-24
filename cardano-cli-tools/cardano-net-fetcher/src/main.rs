@@ -56,11 +56,12 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let network_config = dcspark_blockchain_source::cardano::NetworkConfiguration {
-        relay: (relay_host, relay_port),
+        relay: dcspark_blockchain_source::cardano::Relay::UrlPort(relay_host, relay_port),
         ..base_config
     };
 
-    let mut source = CardanoSource::connect(&network_config, Duration::from_secs(20)).await?;
+    let mut source =
+        CardanoSource::connect(&network_config, Duration::from_secs(20), false).await?;
 
     while let Some(event) = source.pull(&pull_from).await? {
         let block = match &event {

@@ -10,13 +10,15 @@ use cml_chain::block::Header;
 use cml_chain::Deserialize;
 use cml_multi_era::byron::block::{ByronBlockHeader, EbbHead};
 use cml_multi_era::shelley::ShelleyHeader;
-pub use configuration::NetworkConfiguration;
+pub use configuration::{NetworkConfiguration, Relay};
 use cryptoxide::hashing::blake2b_256;
 use dcspark_core::{critical_error, SlotNumber};
 use pallas_network::facades::PeerClient;
 use pallas_network::miniprotocols::chainsync;
 pub use point::*;
+use std::net::SocketAddr;
 use std::time::Instant;
+use tokio::net::lookup_host;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Duration;
 use tracing::{debug, error, info, warn, Instrument};
@@ -101,9 +103,24 @@ impl CardanoSource {
     pub async fn connect(
         network_config: &NetworkConfiguration,
         tip_update_pace: Duration,
+        // if this is true, the source won't immediately return None on pull
+        // when in the tip, and instead will await. This means the pull will
+        // never return None. This is preferred when there is nothing to do in
+        // between requests, since it saves cpu cycles. However, the Milkomeda
+        // bridge uses the fact that the source returns None to know that the
+        // state is in sync, and only then it starts to process the pending
+        // list, so we need to have that settings to support that.
+        await_on_tip: bool,
     ) -> Result<Self> {
+        let resolved_address = match &network_config.relay {
+            configuration::Relay::UrlPort(domain, port) => {
+                lookup_host((domain.as_ref(), *port)).await?.next()
+            }
+        }
+        .ok_or(anyhow::anyhow!("Can't resolve relay address"))?;
+
         let handle = PeerClient::connect(
-            &network_config.relay,
+            &resolved_address,
             u32::from(network_config.chain_info.protocol_magic()).into(),
         )
         .await
@@ -115,8 +132,16 @@ impl CardanoSource {
         // we don't need the handle, since we can signalkill the task by just dropping the request
         // channel, and the task can't error.
         tokio::task::spawn(
-            request_handler(handle, rx, exit_tx, tip_update_pace, network_config.clone())
-                .instrument(tracing::info_span!("request handler")),
+            request_handler(
+                handle,
+                rx,
+                exit_tx,
+                tip_update_pace,
+                network_config.clone(),
+                await_on_tip,
+                resolved_address,
+            )
+            .instrument(tracing::info_span!("request handler")),
         );
 
         Ok(Self {
@@ -151,6 +176,8 @@ async fn request_handler(
     exit_signal: oneshot::Sender<()>,
     tip_update_pace: Duration,
     network_config: NetworkConfiguration,
+    await_on_tip: bool,
+    resolved_address: SocketAddr,
 ) {
     // initially set this to a time in the past, which guarantees an event in the tip fetch.
     let mut last_tip_event = Instant::now()
@@ -164,7 +191,7 @@ async fn request_handler(
             info!("trying to reestablish connection with the node");
 
             match PeerClient::connect(
-                &network_config.relay,
+                &resolved_address,
                 u32::from(network_config.chain_info.protocol_magic()).into(),
             )
             .await
@@ -193,6 +220,7 @@ async fn request_handler(
             &mut last_tip_event,
             tip_update_pace,
             &network_config,
+            await_on_tip,
         )
         .await
         {
@@ -214,6 +242,7 @@ async fn block_fetch(
     last_tip_event: &mut Instant,
     tip_update_pace: Duration,
     network_config: &NetworkConfiguration,
+    await_on_tip: bool,
 ) -> Result<()> {
     let points: Result<Vec<_>> = from
         .into_iter()
@@ -257,37 +286,46 @@ async fn block_fetch(
         *last_tip_event = Instant::now();
     }
 
-    // if we receive an Await we just return on the source, but we need to avoid
-    // calling request_next again the next time.
-    if !handle.chainsync.has_agency() {
+    if !await_on_tip && from == tip.0 {
+        info!("up to date, nothing to pull");
         return Ok(());
     }
 
-    let raw_header = match handle.chainsync.request_next().await? {
-        chainsync::NextResponse::RollForward(block_header, _) => block_header,
-        chainsync::NextResponse::RollBackward(point, _) => {
-            if point == pallas_network::miniprotocols::Point::Origin || point == from {
-                match handle.chainsync.request_next().await? {
-                    chainsync::NextResponse::RollForward(block_header, _) => block_header,
-                    chainsync::NextResponse::RollBackward(_, _) => {
-                        // there shouldn't be a way to get this again after already rolling back to Origin or to the intersect point
-                        return Err(
-                            anyhow::anyhow!("Unexpected RollBackward").context(critical_error!())
-                        );
-                    }
-                    chainsync::NextResponse::Await => {
-                        info!("source is up to date, nothing to pull");
-                        return Ok(());
-                    }
-                }
-            } else {
-                todo!();
-            }
+    let point = match handle.chainsync.request_next().await? {
+        chainsync::NextResponse::RollBackward(point, _) => point,
+        // since we did a chainsync request before, the next message should
+        // always be RollBackward to one of the points in that request (or
+        // Origin).
+        chainsync::NextResponse::RollForward(_, _) => {
+            return Err(anyhow::anyhow!("Unexpected RollForward message received")
+                .context(critical_error!()));
         }
         chainsync::NextResponse::Await => {
-            info!("source is up to date, nothing to pull");
-            return Ok(());
+            return Err(
+                anyhow::anyhow!("Unexpected Await message received").context(critical_error!())
+            );
         }
+    };
+
+    let (raw_header, tip) = if point == pallas_network::miniprotocols::Point::Origin
+        || point == from
+    {
+        match handle.chainsync.request_next().await? {
+            chainsync::NextResponse::RollForward(block_header, tip) => (block_header, tip),
+            chainsync::NextResponse::RollBackward(_, _) => {
+                // there shouldn't be a way to get this again after already rolling back to Origin or to the intersect point
+                return Err(anyhow::anyhow!("Unexpected RollBackward").context(critical_error!()));
+            }
+            chainsync::NextResponse::Await => match handle.chainsync.recv_while_must_reply().await?
+            {
+                chainsync::NextResponse::RollForward(block_header, _) => (block_header, tip),
+                chainsync::NextResponse::RollBackward(_, _) => return Ok(()),
+                // this is not encoded in the types, but afaik it shouldn't be possible to get this message twice in a row.
+                chainsync::NextResponse::Await => unreachable!(),
+            },
+        }
+    } else {
+        todo!();
     };
 
     let (slot, hash) = match raw_header.variant {
@@ -362,12 +400,17 @@ async fn block_fetch(
 
     info!(?from, ?tip, "making block range request");
 
-    if handle
-        .blockfetch
-        .request_range((from, tip.0))
-        .await?
-        .is_none()
-    {
+    // note: because of block diffusion pipelining, the tip may be behind the
+    // new block update (because it may not be fully validated), in which case
+    // we don't want to construct a malformed payload by setting the to to be
+    // before the from.
+    let to = if from.slot_or_default() > tip.0.slot_or_default() {
+        from.clone()
+    } else {
+        tip.0.clone()
+    };
+
+    if handle.blockfetch.request_range((from, to)).await?.is_none() {
         debug!("no blocks found in range");
         return Ok(());
     };
@@ -379,7 +422,7 @@ async fn block_fetch(
     while let Some(raw_block) = handle.blockfetch.recv_while_streaming().await? {
         let event = BlockEvent::from_serialized_block(
             raw_block.as_ref(),
-            &network_config.shelley_era_config,
+            network_config.shelley_era_config.as_ref(),
         )
         .context(critical_error!());
 

@@ -27,7 +27,7 @@ impl Point {
     pub fn slot_nb(&self) -> SlotNumber {
         match self {
             Point::Origin => SlotNumber::from(0),
-            Point::BlockHeader { slot_nb, hash: _ } => slot_nb.clone(),
+            Point::BlockHeader { slot_nb, hash: _ } => *slot_nb,
         }
     }
 }

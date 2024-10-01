@@ -1,5 +1,5 @@
 [package]
-name = "oura-block-fetcher"
+name = "n2c-block-fetcher"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,5 +8,6 @@ edition = "2021"
 [dependencies]
 anyhow = { version = "1.0.71" }
 clap = { version = "4.3.0", features = ["derive"] }
-oura = { version = "1.8.0" }
 tokio = { version = "1.25.0", features = ["full"] }
+dcspark-core = { path = "../../core" }
+dcspark-blockchain-source = { path = "../../blockchain-source" }

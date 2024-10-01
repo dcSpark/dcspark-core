@@ -5,6 +5,7 @@ use super::{time::Era, Point};
 #[serde(deny_unknown_fields)]
 pub enum Relay {
     UrlPort(String, u16),
+    UnixSocket(String),
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]

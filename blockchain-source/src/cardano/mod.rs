@@ -1,5 +1,6 @@
 mod configuration;
 mod event;
+pub mod n2c;
 mod point;
 pub mod time;
 
@@ -13,6 +14,7 @@ use cml_multi_era::shelley::ShelleyHeader;
 pub use configuration::{NetworkConfiguration, Relay};
 use cryptoxide::hashing::blake2b_256;
 use dcspark_core::{critical_error, SlotNumber};
+pub use n2c::{Event as N2CSourceEvent, N2CSource};
 use pallas_network::facades::PeerClient;
 use pallas_network::miniprotocols::chainsync;
 pub use point::*;
@@ -116,6 +118,9 @@ impl CardanoSource {
             configuration::Relay::UrlPort(domain, port) => {
                 lookup_host((domain.as_ref(), *port)).await?.next()
             }
+            configuration::Relay::UnixSocket(_) => anyhow::bail!(
+                "N2N protocol doesn't support unix sockets, use the N2C source instead"
+            ),
         }
         .ok_or(anyhow::anyhow!("Can't resolve relay address"))?;
 

@@ -1,7 +1,7 @@
 use super::{NetworkConfiguration, Point};
 use crate::{
     cardano::{configuration, BlockEvent},
-    EventObject, Source,
+    EventObject, GetNextFrom, Source,
 };
 use anyhow::{anyhow, Result};
 use dcspark_core::StoppableService;
@@ -12,6 +12,14 @@ use tracing::{debug, info};
 pub enum Event {
     RollBack { block_slot: u64, block_hash: String },
     Block(BlockEvent),
+}
+
+impl GetNextFrom for Event {
+    type From = ();
+
+    fn next_from(&self) -> Option<Self::From> {
+        None
+    }
 }
 
 impl EventObject for Event {

@@ -330,7 +330,11 @@ async fn block_fetch(
             },
         }
     } else {
-        todo!();
+        // this is probably impossible, but handle it as an error just in case
+        return Err(anyhow::anyhow!(
+            "Unexpected point in Rollbackward immediately after doing an intersect request"
+        )
+        .context(critical_error!()));
     };
 
     let (slot, hash) = match raw_header.variant {

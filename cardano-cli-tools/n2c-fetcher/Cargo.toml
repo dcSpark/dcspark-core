@@ -11,3 +11,4 @@ clap = { version = "4.3.0", features = ["derive"] }
 tokio = { version = "1.25.0", features = ["full"] }
 dcspark-core = { path = "../../core" }
 dcspark-blockchain-source = { path = "../../blockchain-source" }
+hex = { version = "0.4.3" }

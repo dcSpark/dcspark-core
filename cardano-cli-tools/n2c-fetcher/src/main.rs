@@ -50,7 +50,21 @@ async fn main() -> anyhow::Result<()> {
     let mut source = N2CSource::connect(base_config, start_from).await?;
 
     while let Ok(Some(block)) = source.pull(&()).await {
-        println!("{:?}", block);
+        match block {
+            dcspark_blockchain_source::cardano::N2CSourceEvent::RollBack {
+                block_slot,
+                block_hash,
+            } => {}
+            dcspark_blockchain_source::cardano::N2CSourceEvent::Block(block) => {
+                println!(
+                    "Block #{}, point: {}@{}, raw cbor hex: {}",
+                    block.block_number,
+                    block.id,
+                    block.slot_number,
+                    hex::encode(block.raw_block),
+                );
+            }
+        }
     }
 
     Ok(())

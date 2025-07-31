@@ -25,4 +25,4 @@ cml-multi-era = { git = "https://github.com/dcSpark/cardano-multiplatform-lib", 
 cml-chain = { git = "https://github.com/dcSpark/cardano-multiplatform-lib", rev = "25ff92b4f6cf0f5dc98f0df3ab812a23af467e98" }
 cml-core = { git = "https://github.com/dcSpark/cardano-multiplatform-lib", rev = "25ff92b4f6cf0f5dc98f0df3ab812a23af467e98" }
 
-pallas-network = "0.30.2"
+pallas-network = "0.33.0"

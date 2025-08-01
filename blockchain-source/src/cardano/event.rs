@@ -24,7 +24,7 @@ pub struct BlockEvent {
     pub raw_block: Vec<u8>,
     pub slot_number: SlotNumber,
     pub is_boundary_block: bool,
-    pub epoch: u64,
+    pub epoch: Option<u64>,
 }
 
 impl<Block, Tip> CardanoNetworkEvent<Block, Tip> {
@@ -104,7 +104,10 @@ impl<Tip> GetNextFrom for CardanoNetworkEvent<BlockEvent, Tip> {
 }
 
 impl BlockEvent {
-    pub(crate) fn from_serialized_block(raw_block: &[u8], era: &Era) -> anyhow::Result<Self> {
+    pub(crate) fn from_serialized_block(
+        raw_block: &[u8],
+        era: Option<&Era>,
+    ) -> anyhow::Result<Self> {
         let block = cml_multi_era::MultiEraBlock::from_explicit_network_cbor_bytes(raw_block)
             .expect("failed to deserialize block");
         let header = &block.header();
@@ -127,15 +130,18 @@ impl BlockEvent {
             epoch: match &block {
                 cml_multi_era::MultiEraBlock::Byron(bb) => match bb {
                     cml_multi_era::byron::block::ByronBlock::EpochBoundary(eb) => {
-                        eb.header.consensus_data.epoch_id
+                        Some(eb.header.consensus_data.epoch_id)
                     }
                     cml_multi_era::byron::block::ByronBlock::Main(m) => {
-                        m.header.consensus_data.byron_slot_id.epoch
+                        Some(m.header.consensus_data.byron_slot_id.epoch)
                     }
                 },
                 _ => era
-                    .absolute_slot_to_epoch(header.slot())
-                    .ok_or(anyhow!("can't detect epoch of block"))?,
+                    .map(|era| {
+                        era.absolute_slot_to_epoch(header.slot())
+                            .ok_or(anyhow!("can't detect epoch of block"))
+                    })
+                    .transpose()?,
             },
         })
     }

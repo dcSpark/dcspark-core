@@ -3,7 +3,6 @@ use dcspark_blockchain_source::cardano::Point::BlockHeader;
 use dcspark_blockchain_source::cardano::{CardanoNetworkEvent, CardanoSource};
 use dcspark_blockchain_source::{GetNextFrom, Source};
 use dcspark_core::{BlockId, SlotNumber};
-use std::borrow::Cow;
 use std::time::Duration;
 
 #[derive(Parser, Debug)]
@@ -28,6 +27,8 @@ fn parse_since(since: String) -> anyhow::Result<(BlockId, SlotNumber)> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt::init();
+
     let Cli {
         network,
         since,
@@ -55,11 +56,12 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let network_config = dcspark_blockchain_source::cardano::NetworkConfiguration {
-        relay: (Cow::from(relay_host), relay_port),
+        relay: dcspark_blockchain_source::cardano::Relay::UrlPort(relay_host, relay_port),
         ..base_config
     };
 
-    let mut source = CardanoSource::connect(&network_config, Duration::from_secs(20)).await?;
+    let mut source =
+        CardanoSource::connect(&network_config, Duration::from_secs(20), false).await?;
 
     while let Some(event) = source.pull(&pull_from).await? {
         let block = match &event {

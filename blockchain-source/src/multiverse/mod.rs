@@ -205,7 +205,10 @@ where
 impl dcspark_core::StoppableService
     for MultiverseSource<
         dcspark_core::BlockId,
-        crate::cardano::CardanoNetworkEvent<crate::cardano::BlockEvent, cardano_sdk::protocol::Tip>,
+        crate::cardano::CardanoNetworkEvent<
+            crate::cardano::BlockEvent,
+            pallas_network::miniprotocols::chainsync::Tip,
+        >,
         crate::cardano::CardanoSource,
     >
 {
